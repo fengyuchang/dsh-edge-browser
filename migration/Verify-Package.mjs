@@ -25,4 +25,5 @@ execFileSync(path.join(root, 'bin/bsk.exe'), ['--version'], { windowsHide: true 
 await import(pathToFileURL(path.join(root, 'verify.mjs')));
 await import(pathToFileURL(path.join(root, 'annotation-check.mjs')));
 await import(pathToFileURL(path.join(root, 'annotation-client-check.mjs')));
+await import(pathToFileURL(path.join(root, 'notice-check.mjs')));
 console.log(`PASS: ${manifest.files.length} files, offline plugin imports, bundled CLI and extension checks`);

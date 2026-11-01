@@ -9,12 +9,24 @@ browser's signed-in sessions, controls task tabs without moving the system mouse
 and shows what the agent is doing. It is not an official DeepSeek or Microsoft
 extension and does not contain a private Codex browser implementation.
 
+The experience target is Codex-style visible browser collaboration: observe the
+agent's actions and take over when needed. This is a design goal, not a measured
+claim of performance parity. The following is an actual NASA page after the
+plugin clicked its Overview menu in a separate Edge task window.
+
+![Actual interaction with NASA's public Webb page](docs/assets/nasa-menu.png)
+
+[Real-page demo, result screenshots and reproducible prompt](docs/browser-demo.md).
+Page screenshots temporarily hide control overlays; the examples below use
+synthetic test content to show the extension's interface.
+
 ![Region annotation on a synthetic page](docs/assets/annotation.png)
 
 - Persistent cursor, curved gradient trail, particles, click rings and action status.
 - Draw, move and resize a region; send its cropped screenshot and your suggestion.
-- Explicit destination from the selected Harness conversation, with visible title
-  and ID suffix. Missing, ambiguous or changed selection fails without rerouting.
+- Destination pinned to the conversation owning the browser task, with a visible
+  title and ID suffix. Switching chats never reroutes feedback. Missing, ambiguous
+  or changed ownership fails without sending.
 - Browser navigation, observation, listing and stopping stay within the caller's chat.
 - Human takeover for sign-in or verification, then return control to the agent.
 - Task-tab muting, native Edge debugger banner, tab groups and collapsible controls.
@@ -47,8 +59,9 @@ Only loading the extension does not install the Harness-side receiver. See the
 | Escape | Cancel and retain unsent text |
 
 IME composition and key repeat do not accidentally send. The open shortcut is
-configurable at `edge://extensions/shortcuts`. Select the destination chat in
-Harness first and check its title and ID before submitting.
+configurable at `edge://extensions/shortcuts`. Create the browser task in its
+owning chat and check the destination before submitting. An idle owner can receive
+feedback; if that conversation is closed, reopen it in Harness first.
 
 ## Develop
 

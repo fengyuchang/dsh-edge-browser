@@ -8,9 +8,10 @@ import { executeScopedBrowserAction } from './harness/dsh-session-scope.mjs';
 // An isolated Harness host: no messages enter the user's real conversations.
 const extensionId = 'a'.repeat(32), otherId = 'b'.repeat(32);
 const routes = new Map(), admitted = [];
-let vision = false, imageWrites = 0, hostNotReloaded = false;
-const agent = { id: 'conversation-selected', status: 'idle', options: { provider: 'fixture', model: 'fixture' }, steer: message => admitted.push(message) };
-const registry = { isUsable: id => id === 'browser-owned', dshOwnersOf: () => ['conversation-old-browser-owner'] };
+let vision = false, imageWrites = 0, hostNotReloaded = false, changeOwnerDuringSave = false;
+const agent = { id: 'session-browser-owner', status: 'idle', options: { provider: 'fixture', model: 'fixture' }, steer: message => admitted.push(message) };
+let owners = [agent.id];
+const registry = { isUsable: id => id === 'browser-owned', dshOwnersOf: () => owners };
 const ctx = { get: name => ({
   webServer: { register: route => { routes.set(route.path, route.handler); return () => routes.delete(route.path); } },
   agents: { get: id => id === agent.id ? agent : undefined },
@@ -18,7 +19,7 @@ const ctx = { get: name => ({
   attachments: {
     validateImage: async input => assert.equal(input.mediaType, 'image/png'),
     saveImage: async () => { imageWrites++; return { attachmentId: 'image-fixture', mediaType: 'image/png', width: 1, height: 1 }; },
-    saveFile: async () => ({ attachmentId: 'file-fixture', name: '浏览器局部标注.png', bytes: 68 })
+    saveFile: async () => { if (changeOwnerDuringSave) owners = ['session-foreign']; return { attachmentId: 'file-fixture', name: '浏览器局部标注.png', bytes: 68 }; }
   }
 })[name] };
 const dispose = registerAnnotationRoutes(ctx, registry, value => ({ id: `message-${admitted.length}`, role: 'user', ...value }));
@@ -73,29 +74,44 @@ const operation = async fn => {
 try {
   assert.equal((await request('/context', { browserSessionId: 'browser-owned' }, { origin: 'https://untrusted.test' })).status, 403);
   assert.equal((await request('/context', { browserSessionId: 'browser-foreign' })).status, 400);
-  assert.equal((await request('/context', { browserSessionId: 'browser-owned' })).status, 400, 'Never fall back to the browser task owner when no chat is selected');
+  assert.equal((await request('/context', { browserSessionId: 'browser-owned' })).targetId, agent.id, 'The owning idle conversation does not need to be selected');
   await publish();
   const rejectedClient = await fetch(base + '/client', { method: 'POST', headers: { 'content-type': 'application/json', 'x-dsh-browser-client': '33333333-3333-4333-8333-333333333333', origin: 'https://untrusted.test' }, body: JSON.stringify({ revision: 1, targetId: 'foreign-chat', active: true }) });
   assert.equal(rejectedClient.status, 403, 'Web pages must not publish a selected Harness chat');
   await publish('conversation-another-window', true, '22222222-2222-4222-8222-222222222222');
-  assert.equal((await request('/context', { browserSessionId: 'browser-owned' })).status, 400, 'Multiple selected chats must not be guessed');
+  assert.equal((await request('/context', { browserSessionId: 'browser-owned' })).targetId, agent.id, 'Another open window must not change the owner');
   await publish('conversation-another-window', false, '22222222-2222-4222-8222-222222222222');
   let target = await request('/context', { browserSessionId: 'browser-owned', targetId: 'conversation-foreign' });
-  assert.equal(target.targetId, agent.id, 'Target identity must come from the selected Harness chat, even when a different conversation owns the browser');
+  assert.equal(target.targetId, agent.id, 'A requested destination cannot override the browser owner');
   assert.equal(target.targetTitle, '用户当前选中的已结束聊天');
   await publish('conversation-switched');
-  assert.equal((await request('/submit', { ...annotation, token: target.token })).status, 400, 'Changing chats must never silently reroute a draft');
-  await publish();
   assert.equal((await request('/submit', { ...annotation, token: target.token }, { 'x-dsh-browser-extension': otherId })).status, 400);
   assert.equal((await request('/submit', { ...annotation, token: target.token, rect: { ...annotation.rect, width: -1 } })).status, 400);
   assert.equal(admitted.length, 0);
   const [a, b] = await Promise.all([request('/submit', { ...annotation, token: target.token }), request('/submit', { ...annotation, token: target.token })]);
   assert.equal(a.accepted, true); assert.equal(b.messageId, a.messageId); assert.equal(admitted.length, 1, 'A retry must never duplicate a message');
+  assert.equal(a.targetId, agent.id, 'Switching to another busy chat during annotation must still deliver to the original idle owner');
+  assert.equal(a.browserSessionId, 'browser-owned');
   assert.equal(admitted[0].content[1].type, 'file', 'Text-only models receive a PNG file, not unsupported image input');
   assert.equal(admitted[0].source.kind, 'browserskill-annotation', 'Use a producer-owned source; format v4 rejects kind=plugin');
   assert(!admitted[0].content[0].text.includes('access_token'));
   assert(!admitted[0].content[0].text.includes('dsh-browser://'));
   assert(admitted[0].content[0].text.includes('#results'));
+  owners = [];
+  assert.equal((await request('/context', { browserSessionId: 'browser-owned' })).status, 400, 'Missing ownership must fail closed');
+  owners = [agent.id, 'session-another-owner'];
+  assert.equal((await request('/context', { browserSessionId: 'browser-owned' })).status, 400, 'Multiple desktop owners must fail closed');
+  owners = ['subagent-fixture', agent.id];
+  target = await request('/context', { browserSessionId: 'browser-owned' });
+  assert.equal(target.targetId, agent.id, 'A native child task returns feedback to its single desktop parent conversation');
+  owners = ['session-foreign'];
+  assert.equal((await request('/submit', { ...annotation, token: target.token })).status, 400, 'Ownership changes invalidate an existing draft');
+  owners = [agent.id];
+  target = await request('/context', { browserSessionId: 'browser-owned' });
+  changeOwnerDuringSave = true;
+  assert.equal((await request('/submit', { ...annotation, token: target.token })).status, 400, 'Recheck ownership after asynchronous attachment work');
+  assert.equal(admitted.length, 1);
+  changeOwnerDuringSave = false; owners = [agent.id];
   vision = true;
   target = await request('/context', { browserSessionId: 'browser-owned' });
   assert.equal((await request('/submit', { ...annotation, token: target.token })).accepted, true);
@@ -158,7 +174,7 @@ try {
   assert.deepEqual(listed.sessions, [{ sessionId: 'browser-a', current: true }]);
   assert.equal((await executeScopedBrowserAction(scope, 'bsk_session', { action: 'stop' }, exec, echo)).requestId, 'request-own', 'Keep own completed-stop recovery without selecting a foreign receipt');
   await assert.rejects(executeScopedBrowserAction(scope, 'bsk_session', { action: 'stop', requestId: 'foreign-request' }, exec, echo), /不属于当前聊天/);
-  console.log('PASS: selected-chat delivery independent of browser owner, idle target, selection changes and ambiguous-window refusal, producer-owned source, trust checks, crop/model compatibility, retry deduplication, hold/resume, stale input cancellation, cleanup and per-conversation browser isolation');
+  console.log('PASS: pinned browser-owner delivery despite selection changes, idle owner, subagent parent, absent/ambiguous/changed ownership refusal, post-await revalidation, producer-owned source, trust checks, crop/model compatibility, retry deduplication, hold/resume, stale input cancellation, cleanup and per-conversation browser isolation');
 } finally {
   vm.runInContext("dshReleaseAnnotation('browser-owned')", sandbox);
   dispose(); await new Promise(resolve => server.close(resolve));

@@ -6,7 +6,8 @@ flowchart LR
   Native --> CLI[BrowserSkill CLI 与本机服务]
   CLI --> Ext[Edge 扩展]
   Ext --> Task[自己的任务网页]
-  Input[Harness 输入栏选择同步] --> Receiver[本机标注接收端]
+  Native --> Ownership[服务端浏览器任务归属]
+  Ownership --> Receiver[本机标注接收端]
   Human[用户框选与建议] --> Ext
   Ext --> Receiver
   Receiver --> AI
@@ -16,9 +17,9 @@ flowchart LR
 
 `content-scripts/dsh-controls.js` 使用封闭 Shadow DOM 显示标注编辑器与边缘控件。标注截图时暂时隐藏浮层；画框、拖动和缩放均在冻结画面中进行。截图最长边限制为 1600 像素，文字不超过 4000 字。建议发送前固定目标，只有收到接收回执才显示成功。
 
-`harness/dsh-annotation-client.js` 接入已有的 `conversation.input.overlay`，发布选中聊天并保持序号递增。焦点移至 Edge 后不丢失选择；多个不同选择不猜测目标。
+`harness/dsh-annotation-client.js` 接入已有的 `conversation.input.overlay`，只提供匹配 ID 的聊天显示名称；它不决定发送目标。接收端从原生注册表解析网页所属的唯一桌面聊天，忽略当前选中的其他聊天。
 
-`harness/dsh-annotations.mjs` 注册本机路由，验证扩展来源、选择、范围与 PNG。新消息采用 `browserskill-annotation` 来源；图片模型接收图片，文字模型接收 PNG 文件和区域文字。接收后调用既有 agent 输入机制，使已结束一轮回答的聊天也可以继续。
+`harness/dsh-annotations.mjs` 注册本机路由，验证扩展来源、任务归属、范围与 PNG；在编辑开始和附件保存后两次检查归属。标注使用 `browserskill-annotation` 来源，工具可用性通知使用 `browserskill-notice` 来源，均符合当前 v4 消息格式；图片模型接收图片，文字模型接收 PNG 文件和区域文字。接收后调用既有 agent 输入机制，使已结束一轮回答的聊天也可以继续。
 
 `harness/dsh-session-scope.mjs` 统一约束工具调用。默认会话号只能解析到调用聊天自己的浏览器；列举、显式访问与停止同样校验归属，保留停止回执恢复。
 
@@ -31,7 +32,7 @@ flowchart LR
 
 ## 检查
 
-`npm test` 不安装运行依赖、不启动真实浏览器、不向真实聊天发消息，检查语法、分组、静音、命令挂钩、指针生命周期、边缘滚动、标注传输、选择同步、来源与会话隔离。
+`npm test` 不安装运行依赖、不启动真实浏览器、不向真实聊天发消息，检查语法、分组、静音、命令挂钩、指针生命周期、边缘滚动、标注传输、标题同步、原聊天路由、来源与会话隔离。
 
 真实 Edge 界面组件检查需要显式实例：
 

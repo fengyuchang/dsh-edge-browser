@@ -75,12 +75,17 @@ export function registerAnnotationRoutes(ctx, registry, createUserMessage) {
   const clients = new Map();
   const agents = () => ctx.get('agents');
   function prune() { for (const [key, draft] of drafts) if (Date.now() > draft.expires) drafts.delete(key); }
-  function selected() {
-    const active = [...clients.values()].filter(client => client.active && Date.now() - client.seen < 90000);
-    const targets = [...new Map(active.map(client => [client.targetId, client])).values()];
-    if (targets.length > 1) invalid('多个 Harness 窗口选中了不同会话，请只保留一个目标聊天后重新标注。');
-    if (!targets.length) invalid('请先在 Harness 选中要接收标注的聊天；未确认目标时不会发送到其他会话。');
-    return targets[0];
+  function owner(browserSessionId) {
+    if (typeof browserSessionId !== 'string' || !registry?.isUsable(browserSessionId)) invalid('此网页没有正在运行的 Harness 浏览器会话。');
+    const owners = [...new Set(registry.dshOwnersOf(browserSessionId))];
+    // Native ownership includes a calling subagent followed by its ancestors.
+    // A single desktop conversation is authoritative; window selection is not.
+    const conversations = owners.filter(id => id.startsWith('session-'));
+    const targets = conversations.length ? conversations : owners;
+    if (targets.length !== 1) invalid('无法唯一确认此网页所属的聊天，建议尚未发送；请从目标聊天重新打开浏览器任务。');
+    const targetId = targets[0];
+    const title = [...clients.values()].filter(client => client.targetId === targetId).sort((a, b) => b.seen - a.seen)[0]?.title ?? '网页所属聊天';
+    return { targetId, title };
   }
   const register = (path, action, fence = trusted) => server.register({ kind: 'exact', path: BASE + path, handler: async (req, res) => {
     try {
@@ -91,7 +96,7 @@ export function registerAnnotationRoutes(ctx, registry, createUserMessage) {
     } catch (error) { return reply(res, error.status ?? 409, { error: error.status ? error.message : '未能发送标注，请保留建议并重试。' }); }
   } });
   const disposers = [
-    register('/selection', () => { const target = selected(); return { targetId: target.targetId, targetTitle: target.title, protocol: 2 }; }),
+    register('/selection', body => { const target = owner(body.browserSessionId); return { targetId: target.targetId, targetTitle: target.title, protocol: 4, routing: 'browser-owner' }; }),
     register('/client', (body, clientId) => {
       if (!Number.isSafeInteger(body.revision) || body.revision < 0 || typeof body.targetId !== 'string' || !body.targetId || body.targetId.length > 200 || typeof body.active !== 'boolean') invalid('会话选择状态无效。');
       const previous = clients.get(clientId);
@@ -102,14 +107,13 @@ export function registerAnnotationRoutes(ctx, registry, createUserMessage) {
       return { ok: true };
     }, trustedClient),
     register('/context', (body, extensionId) => {
-      if (typeof body.browserSessionId !== 'string' || !registry?.isUsable(body.browserSessionId)) invalid('此网页没有正在运行的 Harness 浏览器会话。');
-      const target = selected();
+      const target = owner(body.browserSessionId);
       const targetId = target.targetId;
       const agent = targetId && agents()?.get(targetId);
-      if (!agent || agent.status === 'disposed') invalid('对应会话未激活，请回到 Harness 激活后重试。');
+      if (!agent || agent.status === 'disposed') invalid(`网页所属聊天 ${targetId} 未打开，请在 Harness 打开它后重试；不会改投其他聊天。`);
       if (drafts.size >= 32) invalid('待发送标注过多，请稍后重试。');
       const token = randomBytes(32).toString('hex');
-      drafts.set(token, { targetId, targetTitle: target.title, extensionId, expires: Date.now() + TTL });
+      drafts.set(token, { browserSessionId: body.browserSessionId, targetId, targetTitle: target.title, extensionId, expires: Date.now() + TTL });
       return { token, targetId, targetTitle: target.title };
     }),
     register('/submit', async (body, extensionId) => {
@@ -117,7 +121,7 @@ export function registerAnnotationRoutes(ctx, registry, createUserMessage) {
       if (!draft || draft.extensionId !== extensionId) invalid('标注已过期，请重新框选。');
       if (draft.receipt) return draft.receipt;
       if (draft.pending) return draft.pending;
-      if (selected().targetId !== draft.targetId) invalid('Harness 当前选中的聊天已改变，请取消后重新标注；不会转发到其他会话。');
+      if (owner(draft.browserSessionId).targetId !== draft.targetId) invalid('网页所属聊天已改变，请重新标注；不会转发到其他会话。');
       const text = annotationText(body);
       const agent = agents()?.get(draft.targetId);
       if (!agent || agent.status === 'disposed') invalid('对应会话已关闭，建议尚未发送。');
@@ -136,10 +140,10 @@ export function registerAnnotationRoutes(ctx, registry, createUserMessage) {
           await attachments.validateImage({ data, mediaType: 'image/png', name });
           content.push({ type: 'file', attachment: await attachments.saveFile({ data, name }) });
         }
-        if (agents()?.get(draft.targetId) !== agent) throw new Error('Conversation closed during annotation admission');
-        const message = createUserMessage({ content, source: { kind: 'browserskill-annotation', requestId: body.token, summary: '用户浏览器局部标注' } });
+        if (owner(draft.browserSessionId).targetId !== draft.targetId || agents()?.get(draft.targetId) !== agent || agent.status === 'disposed') invalid('网页所属聊天已改变或关闭，建议尚未发送，请重新标注。');
+        const message = createUserMessage({ content, source: { kind: 'browserskill-annotation', requestId: body.token, browserSessionId: draft.browserSessionId, targetId: draft.targetId, summary: '用户浏览器局部标注' } });
         agent.steer(message);
-        draft.receipt = { accepted: true, targetId: draft.targetId, messageId: message.id };
+        draft.receipt = { accepted: true, targetId: draft.targetId, browserSessionId: draft.browserSessionId, messageId: message.id };
         return draft.receipt;
       })();
       try { return await draft.pending; } finally { draft.pending = undefined; }
