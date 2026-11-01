@@ -25,8 +25,8 @@ collapsible controls, shortcuts, packaging and documentation. See
 The offline release does not include Edge or DeepSeek Harness Desktop itself.
 # Website demonstration screenshots
 
-`docs/assets/nasa-menu.png` and `docs/assets/nasa-scroll.png` show actual
-interactions with [NASA Science's Webb mission page](https://science.nasa.gov/mission/webb/).
+`docs/assets/nasa-*.png` and `nasa-comet-demo.gif` show actual interactions or
+clearly labeled pointer-component replay on [NASA Science's Webb mission page](https://science.nasa.gov/mission/webb/).
 Website content, logos and credited imagery remain attributed to NASA and the
 respective rights holders. These screenshots illustrate browser interaction;
 the repository's MIT license does not relicense third-party website material.

@@ -3,7 +3,7 @@
   "name": "DeepSeek Harness",
   "description": "本机自用 Edge 浏览器助手，基于开源 BrowserSkill；供 DeepSeek Harness 使用现有登录、后台操作、实时预览和人工接手。",
   "version": "0.3.3",
-  "version_name": "0.3.3 DSH annotations-2026-11-01-r4",
+  "version_name": "0.3.3 DSH task-completion-2026-11-01-r5",
   "icons": {
     "16": "icon/logo.png",
     "32": "icon/logo.png",

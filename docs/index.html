@@ -43,10 +43,10 @@
       <p class="image-note">以上产品截图均来自合成测试页面，不包含真实账号或聊天内容。</p>
     </section>
     <section class="section wrap real-demo" id="demo">
-      <div class="section-heading"><div><p class="eyebrow">REAL PAGE · REAL ACTIONS</p><h2>操作发生在真实网站上。</h2></div><p>打开 NASA 官网，观察页面，<br>点击菜单、跳转并滚动。</p></div>
-      <figure class="real-shot"><img src="assets/nasa-menu.png" alt="插件在 Edge 真实任务窗口中点击展开 NASA 官网 Overview 菜单后的静态截图" loading="lazy" width="1600" height="916"><figcaption><b>01 / 点击展开菜单</b><span>NASA Webb 官网 · 原生浏览器工具实际操作</span></figcaption></figure>
-      <figure class="real-shot"><img src="assets/nasa-scroll.png" alt="实际点击 Latest Images 并向下滚动后的 NASA 网页" loading="lazy" width="1600" height="916"><figcaption><b>02 / 跳转并滚动</b><span>同一个独立任务窗口 · 2026-11-01</span></figcaption></figure>
-      <p class="image-note">这些是实际网页操作后的静态关键帧。网页截图会暂时隐藏控制浮层；上方合成页截图展示指针与标注界面。以 Codex 式的浏览器协作为体验目标，尚未进行系统性性能对比。</p>
+      <div class="section-heading"><div><p class="eyebrow">SEE THE AGENT MOVE</p><h2>黄橙光晕，指针与彗尾。</h2></div><p>看见 AI 移向哪里，<br>也看见它何时交还页面。</p></div>
+      <details class="motion-preview" open><summary>展开 / 收起指针光效演示</summary><figure class="real-shot"><picture><source media="(prefers-reduced-motion: reduce)" srcset="assets/nasa-comet.png"><img src="assets/nasa-comet-demo.gif" alt="NASA 真实网页背景上的 DeepSeek 指针、弧形渐变彗尾和粒子放慢演示" loading="lazy" width="1280" height="733"></picture><figcaption><b>01 / 指针、渐变彗尾与粒子</b><span>同版插件组件 · 放慢演示，非连续录屏</span></figcaption></figure></details>
+      <figure class="real-shot"><img src="assets/nasa-pointer-glow.png" alt="原生工具实际移动指针后，NASA 页面边缘显示黄橙渐变光晕、DeepSeek 指针与底部控制条" loading="lazy" width="1600" height="916"><figcaption><b>02 / 真实操作后的光晕与控制条</b><span>NASA Webb 官网 · 实际 Edge 任务页</span></figcaption></figure>
+      <p class="image-note">静帧来自真实浏览器操作。动图在同一实际网页上重放同版插件组件，放慢以看清渐变和粒子。任务结束由模型保留结果、关闭中间页；控制提示、指针与光晕随之撤掉。</p>
       <a class="text-link" href="https://github.com/fengyuchang/dsh-edge-browser/blob/main/docs/browser-demo.md">复制演示任务，自己体验 ↗</a>
     </section>
     <section class="dark-section" id="start"><div class="wrap install-layout"><div><p class="eyebrow">GET STARTED</p><h2>连接你的日常 Edge。</h2><p>先安装并初始化 Edge 和 DeepSeek Harness Desktop，配置好模型。完整包提供扩展、接收端、运行依赖与安装回滚脚本。</p><a class="text-link" href="https://github.com/fengyuchang/dsh-edge-browser/blob/main/docs/installation.md">查看完整安装说明 ↗</a></div><ol class="steps"><li><b>下载并解压</b><span>从 Releases 获取 Windows x64 完整包。</span></li><li><b>运行安装器</b><span>正常退出 Harness，再运行“一键安装.cmd”。</span></li><li><b>加载 Edge 扩展</b><span>在 edge://extensions 开启开发人员模式，加载 extension 文件夹，连接 52800。</span></li><li><b>交给 AI 一个任务</b><span>重开 Harness，用 /browser-skill 和扩展中的实例 ID 开始。</span></li></ol></div></section>

@@ -17,7 +17,7 @@ async function dshAnnotationOperation(dispatcher, request, signal, operation) {
   dshBrowserSessions = dispatcher.sessions;
   const sessionId = request.params?.session_id;
   if (!sessionId) return operation();
-  if (request.method === 'tool.session_stop') dshReleaseAnnotation(sessionId);
+  if (request.method === 'tool.session_stop' || (request.method === 'tool.tab_return' && dshAnnotationLocks.get(sessionId)?.tabId === request.params.tab_id)) dshReleaseAnnotation(sessionId);
   else {
     const lock = dshAnnotationLocks.get(sessionId);
     if (lock) {

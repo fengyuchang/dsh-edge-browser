@@ -33,11 +33,28 @@ For remote setup/pairing, follow the [remote guide](https://github.com/Tencent/B
 
 2. For an existing user tab, read [tab borrowing](references/tabs-and-profiles.md) first. Replace example IDs/refs with actual
    results. Pass `session` when more than one exists; never use foreign IDs.
-3. Observe after page changes; check ambiguous results once. Stop when success is
-   visible. Stop requested video first, then on success or failure call
-   `bsk_session({ action: "stop", session: "<id>" })` unless keeping the session
-   open is part of the user's request. Stopping returns borrowed tabs, leaving them
-   open in the user's window.
+3. Observe after page changes and stop when success is visible. Before the final
+   answer (success or failure), stop requested video, list this task's tabs and
+   finish with a deliberate page decision:
+
+   ```text
+   bsk_tabs({ action: "list", session: "<id>", scope: "agent" })
+   bsk_session({ action: "finish", session: "<id>", keepTabIds: [123] })
+   ```
+
+   Use actual tab IDs, not 123. Keep results the user may read, a page they asked
+   to leave open, unsaved forms, manual follow-up and uncertain pages. Close
+   disposable searches, blank pages and completed intermediate pages by leaving
+   their IDs out. [] closes all task-created pages. Borrowed user tabs always
+   return to their original window and stay open. Kept pages become ordinary
+   browser pages: no debugger, control pill, glow or pointer remains.
+   Keeping a page open does not require keeping browser control. Explain the
+   decision briefly in your final answer. Never leave control attached after
+   the answer; unfinished human-help waits remain within the active turn.
+   If you omit finish, turn completion preserves all remaining pages and releases
+   control as a conservative fallback. Explicit cancellation/recovery can still
+   use action=stop. A failed preserve must be inspected/retried before stop;
+   never close a page whose transfer or unsaved state is uncertain.
 
 ## Read and interact
 
@@ -74,7 +91,8 @@ The user can choose “局部标注”, draw/move/resize a rectangle, type advic
 “✓ 发送建议”. The extension holds subsequent browser commands while editing and
 sends the confirmed advice, cropped screenshot and bounded location data to the
 chat that owns the browser task, shown by name and ID in the annotation editor. A
-finished answer does not close the chat: the new advice wakes its idle agent.
+finished answer does not close the chat, but ends browser control. An annotation
+submitted before cleanup still wakes the same original agent.
 Switching the selected Harness chat does not change the destination. Missing,
 ambiguous or changed browser ownership is an error; never choose another chat.
 This is new user input; read it
@@ -91,7 +109,8 @@ controls remain available.
 
 Browser sessions are scoped to the calling chat. A missing `session` selects only
 that chat's own browser; a foreign session is refused. An annotation returns to
-the owner of its browser task, including when the owner's last answer ended.
+the owner of its active browser task. Finished tasks release control and annotation
+UI; to annotate a retained page later, start a new owned task and borrow it again.
 If that conversation is closed, ask the user to reopen it; do not reroute feedback.
 
 Inspect unknown effects before retrying. On an error or two attempts without progress,

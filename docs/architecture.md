@@ -25,6 +25,10 @@ flowchart LR
 
 ## 开发约定
 
+`harness/dsh-task-finish.mjs` 提供 `bsk_session(action=finish, keepTabIds)` 和完成钩子。模型决定保留的任务页，经标签归还接口转移成普通页面，再停止任务窗口；其他任务创建页关闭，借入的原有标签按上游流程归还。扩展 `dsh-task-finish.js` 在原生权限校验后扩展 `tab_return`，保留同一个标签及未保存状态，并释放 CDP、重置浮层与临时静音。转移失败不执行停止，保留部分回执以便重试。
+
+`agent/turn-stopping` 在正常结束前兜底；`agent/status=idle` 覆盖取消与错误结束。两者只清理直接拥有者的浏览器，不处理仍在工作的子 Agent 或其他聊天。兜底保留所有页面，避免在没有模型判断时丢失未保存数据；旧 idle 事件遇到新轮次会跳过。
+
 - `harness/` 是可读定制 helper，`packages/browser-skill-dsh-plugin/lib/` 为已接入的完整插件。源码检查保证两份 helper 和内置技能相同。
 - `extension/` 包含可直接加载的完整发行代码；上游打包文件保留原样结构，定制逻辑集中在可读脚本。上游完整 TypeScript 编译工具链见 Tencent/BrowserSkill。
 - `scripts/build-release.mjs` 仅从仓库、已安装锁定依赖、显式 CLI 文件与当前 Node 构建离线包。依赖的许可证随包保留，并写入清单。
@@ -42,5 +46,7 @@ node annotation-ui-check.mjs --browser YOUR_INSTANCE_ID
 ```
 
 它只创建自己的合成网页和任务窗口，模拟扩展传输，建议送入隔离接收会话。真实双窗口隔离检查为 `annotation-scope-live-check.mjs`，需先安装 npm 依赖。两者都在结束时清理自己的任务窗口。
+
+`node task-finish-live-check.mjs --browser YOUR_INSTANCE_ID` 使用真实原生工具和隔离的合成聊天检查保留结果、未保存表单、关闭中间页及完成钩子。测试页通过自身的本机测试指令关闭；不会向真实聊天发送消息。`task-finish-check.mjs` 覆盖转移失败重试、外来标签拒绝和父子聊天隔离。
 
 已完成的人工验收还确认正确聊天收到建议并继续回应；这些结果不意味着任意未来 Harness 版本都兼容。更换宿主、API 或上游版本后应重新验证。

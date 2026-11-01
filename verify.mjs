@@ -14,7 +14,7 @@ assert.deepEqual(manifest.host_permissions, original.host_permissions);
 assert.deepEqual(manifest.permissions, [...original.permissions, 'tabGroups']);
 if (fs.existsSync(path.join(root, 'BrowserSkill-official-0.3.3.zip'))) assert.equal(createHash('sha256').update(fs.readFileSync(path.join(root, 'BrowserSkill-official-0.3.3.zip'))).digest('hex'), '10ef76e68f352893fa22dd4cce2f1b96cb90ed957b815d656e13180d07d3c6ea');
 assert(manifest.content_scripts[0].js.includes('content-scripts/dsh-pointer.js'));
-for (const filename of ['dsh-background.js', 'dsh-task-groups.js', 'dsh-annotations.js', 'dsh-visual-activity.js', 'dsh-pointer-relay.js', 'content-scripts/dsh-controls.js', 'content-scripts/dsh-pointer.js', 'background.js']) {
+for (const filename of ['dsh-background.js', 'dsh-task-groups.js', 'dsh-annotations.js', 'dsh-visual-activity.js', 'dsh-pointer-relay.js', 'dsh-task-finish.js', 'content-scripts/dsh-controls.js', 'content-scripts/dsh-pointer.js', 'background.js']) {
   new vm.Script(read('extension/' + filename), { filename });
 }
 const calls = [];

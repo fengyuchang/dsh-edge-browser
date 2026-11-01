@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const plugin = 'packages/browser-skill-dsh-plugin';
-for (const name of ['dsh-annotations.mjs', 'dsh-session-scope.mjs']) {
+for (const name of ['dsh-annotations.mjs', 'dsh-session-scope.mjs', 'dsh-task-finish.mjs']) {
   assert.equal(read(`${plugin}/lib/${name}`), read(`harness/${name}`));
 }
 const client = read(`${plugin}/lib/client.cjs`);

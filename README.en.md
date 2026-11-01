@@ -11,14 +11,14 @@ extension and does not contain a private Codex browser implementation.
 
 The experience target is Codex-style visible browser collaboration: observe the
 agent's actions and take over when needed. This is a design goal, not a measured
-claim of performance parity. The following is an actual NASA page after the
-plugin clicked its Overview menu in a separate Edge task window.
+claim of performance parity. This demo shows the yellow-orange edge glow,
+DeepSeek pointer, curved comet trail and particles on NASA's actual page.
 
-![Actual interaction with NASA's public Webb page](docs/assets/nasa-menu.png)
+![Pointer, gradient glow and comet particles on NASA's page](docs/assets/nasa-comet-demo.gif)
 
 [Real-page demo, result screenshots and reproducible prompt](docs/browser-demo.md).
-Page screenshots temporarily hide control overlays; the examples below use
-synthetic test content to show the extension's interface.
+The GIF is a slowed replay of the shipped pointer component on the real page,
+not a continuous screen recording. The guide also includes native-operation stills.
 
 ![Region annotation on a synthetic page](docs/assets/annotation.png)
 
@@ -30,6 +30,10 @@ synthetic test content to show the extension's interface.
 - Browser navigation, observation, listing and stopping stay within the caller's chat.
 - Human takeover for sign-in or verification, then return control to the agent.
 - Task-tab muting, native Edge debugger banner, tab groups and collapsible controls.
+- Task completion releases debugger/control/effects. The model keeps useful result
+  pages and unsaved forms and closes disposable created tabs. Borrowed originals
+  return to their origin. Turn-end/cancellation cleanup conservatively keeps pages
+  if the model omitted its decision, without touching other chats' tasks.
 
 ## Install
 
