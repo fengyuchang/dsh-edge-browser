@@ -2,9 +2,9 @@
 
 ![DSH Edge Browser](docs/assets/banner.svg)
 
-# DSH Edge Browser
+# 让你的 DeepSeek Harness 像 Codex 那样操作浏览器
 
-**让 DeepSeek 操作你的日常 Edge，也让你看见它的每一步。**
+**DSH Edge Browser · 让 DeepSeek 操作你的日常 Edge，也让你看见它的每一步。**
 
 后台操作 · 现有登录 · 实时指针 · 局部标注 · 人工接手
 
