@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="380" viewBox="0 0 1280 380" role="img" aria-labelledby="title desc">
+  <title id="title">DSH Edge Browser</title><desc id="desc">Visible AI browser control, region annotations, and human takeover.</desc>
+  <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#102b42"/><stop offset="1" stop-color="#224c60"/></linearGradient><linearGradient id="trail"><stop stop-color="#ffb667" stop-opacity="0"/><stop offset="1" stop-color="#ff893e"/></linearGradient></defs>
+  <rect width="1280" height="380" rx="28" fill="url(#bg)"/>
+  <circle cx="1130" cy="50" r="190" fill="#e9b674" opacity=".05"/>
+  <rect x="856" y="75" width="320" height="226" rx="18" fill="#fff" opacity=".09" stroke="#c9dce7" stroke-opacity=".3"/>
+  <path d="M856 110h320" stroke="#d8e8ed" stroke-opacity=".2"/><g fill="#ffb369"><circle cx="878" cy="93" r="4"/><circle cx="894" cy="93" r="4" opacity=".6"/><circle cx="910" cy="93" r="4" opacity=".3"/></g>
+  <rect x="885" y="139" width="198" height="109" rx="8" fill="#ff9f5120" stroke="#ffa451" stroke-width="2"/>
+  <path d="M745 236 Q889 319 1099 216" fill="none" stroke="url(#trail)" stroke-width="5" stroke-linecap="round"/>
+  <path d="m1096 195 7 39 10-11 13-2Z" fill="#ff9448" stroke="#fff" stroke-width="3" stroke-linejoin="round"/>
+  <g font-family="Segoe UI,Arial,sans-serif"><text x="74" y="115" font-size="16" fill="#ffc88f" letter-spacing="4">SEE · GUIDE · TAKE OVER</text><text x="70" y="194" font-size="65" font-weight="700" fill="#fff">DSH Edge Browser</text><text x="74" y="249" font-size="24" fill="#d1e4ed">Visible browser control for DeepSeek Harness.</text><text x="74" y="305" font-size="17" fill="#a7c5d3">REAL EDGE   /   REGION ANNOTATIONS   /   HUMAN IN THE LOOP</text></g>
+</svg>

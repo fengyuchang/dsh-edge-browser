@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import path from 'node:path';
+const [profile, installRoot] = process.argv.slice(2);
+if (!profile || !installRoot) throw new Error('Profile and install root are required');
+const file = path.join(profile, 'package.json');
+const data = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\ufeff/, ''));
+data.dependencies ??= {};
+data.dependencies['@wxg-prc-cpg/browser-skill-dsh-plugin'] = 'file:' + path.join(installRoot, 'offline/node_modules/@wxg-prc-cpg/browser-skill-dsh-plugin').replaceAll('\\', '/');
+fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');
+const patchFile = path.join(profile, 'cordis.patch.yml');
+const original = fs.existsSync(patchFile) ? fs.readFileSync(patchFile, 'utf8') : '';
+const executable = path.join(installRoot, 'bin/bsk.exe').replaceAll('\\', '/').replaceAll("'", "''");
+fs.writeFileSync(patchFile, original + `\n# BrowserSkill migration package\n- id: browserskill\n  config:\n    bskPath: '${executable}'\n    observationEnabled: true\n    lazyTools: false\n`);

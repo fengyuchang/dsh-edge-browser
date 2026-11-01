@@ -1,0 +1,27 @@
+{
+  "upstream": "https://github.com/Tencent/BrowserSkill",
+  "release": "ext-v0.3.3",
+  "archiveSha256": "10ef76e68f352893fa22dd4cce2f1b96cb90ed957b815d656e13180d07d3c6ea",
+  "modifications": [
+    "Extension display name and Chinese control hint",
+    "Group agent-created tabs inside the task window",
+    "Mute task-window tabs by default, including new and borrowed tabs; undo only this extension's temporary mute when a tab returns to a personal window. Playback and website autoplay policy are unchanged.",
+    "Native CDP commands, authentication and page interaction remain handled by BrowserSkill",
+    "Persistent pointer with curved gradient comet and particles; action lifecycle UI and target highlight; bounded edge hover scrolling after native permission checks. No input values are copied into visual messages.",
+    "Rectangular annotation with cropped screenshot, visible selected-chat destination, producer-owned v4-compatible source and acknowledged deduplicated delivery; selected Harness input slot publishes the destination; ambiguous or changed selection is refused.",
+    "Scope browser tools, listing and stop recovery to the calling conversation; never resolve an omitted session to another chat global current browser.",
+    "Independent collapsible step hint and control UI.",
+    "Native configurable annotation shortcut (Alt+Shift+A); Enter submits once, Shift+Enter keeps newline, and IME composition/repeat guards prevent unintended sends."
+  ],
+  "changedBrandingChunks": 1,
+  "visualVersion": "comet-2026-10-29",
+  "audioVersion": "mute-2026-11-01",
+  "annotationVersion": "annotations-2026-11-01-r3",
+  "reference": {
+    "repository": "https://github.com/SheepofSheep/dsh-doyourweb",
+    "commit": "0cbc4bf444d262caf6c47e046b90cab3d24e280f",
+    "license": "MIT",
+    "use": "MIT design adaptation for selected-conversation publication and annotation reliability; retained license in harness/LICENSE.dsh-doyourweb.txt and offline native plugin."
+  },
+  "archiveUrl": "https://github.com/Tencent/BrowserSkill/releases/download/ext-v0.3.3/browser-skill-extension-v0.3.3-chrome.zip"
+}
