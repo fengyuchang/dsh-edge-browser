@@ -1,6 +1,6 @@
 ---
 name: browser-skill
-description: Automate the user's logged-in Chromium through this plugin's injected bsk_* tools. Use to read pages, fill forms, operate tabs, inspect page activity, debug a website, or test a UI.
+description: Automate the user's logged-in Chromium through this plugin's injected bsk_* tools. Read and operate pages; when login, QR scan, CAPTCHA or OTP requires the user, call bsk_assist request-help to open the handoff UI and wait.
 ---
 
 # browser-skill for DeepSeek Harness
@@ -33,7 +33,10 @@ For remote setup/pairing, follow the [remote guide](https://github.com/Tencent/B
 
 2. For an existing user tab, read [tab borrowing](references/tabs-and-profiles.md) first. Replace example IDs/refs with actual
    results. Pass `session` when more than one exists; never use foreign IDs.
-3. Observe after page changes and stop when success is visible. Before the final
+3. Observe after navigation and before an authenticated operation. If the task
+   requires login or a manual verification step, follow **必须弹出人工接手窗口**
+   below immediately; a chat message alone does not open the handoff UI.
+4. Observe after page changes and stop when success is visible. Before the final
    answer (success or failure), stop requested video, list this task's tabs and
    finish with a deliberate page decision:
 
@@ -55,6 +58,39 @@ For remote setup/pairing, follow the [remote guide](https://github.com/Tencent/B
    control as a conservative fallback. Explicit cancellation/recovery can still
    use action=stop. A failed preserve must be inspected/retried before stop;
    never close a page whose transfer or unsaved state is uncertain.
+
+## 必须弹出人工接手窗口（登录 / 扫码 / 验证码）
+
+当目标操作被登录页、登录弹窗、登录失效、扫码、短信验证码、两步验证或人机验证阻挡，
+除非用户已明确关闭人工协助，或本任务工具已明确返回 `disabled`，必须立即调用
+`bsk_assist` 的 `request-help`。设置状态未知时照常调用，由扩展按用户设置决定是否接手；
+不要等待不存在的“已启用”确认。不要只在聊天里说“请先登录”，不要用等待网页加载、
+反复刷新或重复点击登录按钮代替接手，也不要先结束回答或关闭任务页。
+仅出现“登录”入口不代表操作受阻；已有登录可用、公开内容可读时正常继续。
+
+1. 先在原聊天简短说明：哪个网站需要你完成什么，完成后点击“完成并交还控制权”。
+2. 在同一个工具调用流程中调用下面的接手工具。使用本聊天的实际 session、观察到的
+   tabId 和网站名，不照抄示例值。工具会显示浏览器人工接手提示并等待；普通聊天提醒
+   或 `bsk_page(action=wait)` 不会弹出接手窗口。
+
+   ```text
+   bsk_assist({ action: "request-help", session: "<本任务实际 session>",
+     tabId: <观察到的实际标签 ID>, title: "需要你完成登录",
+     prompt: "请在当前网站完成登录（需要时扫码或输入验证码）。看到登录后的目标页面后，点击‘完成并交还控制权’，我会确认状态并继续刚才的任务。",
+     timeoutMs: 600000 })
+   ```
+
+3. 等待工具返回，不并行操作这个任务，不切换到其他聊天或浏览器实例。默认由用户明确
+   交还控制；只有已观察到可靠的登录成功标志，才设置 completionCriteria，且必须保证
+   调用前尚未满足。不要仅用“离开登录 URL”“出现退出按钮”等未核实条件猜测成功。
+4. 仅在 outcome 为 `continued` 或 `completed` 后重新 observe，确认登录成功或验证已
+   完成，再从原步骤继续。`navigated` 只说明页面变化：重新观察，不能直接当作已登录。
+   `cancelled` / `timed_out` 时停止依赖登录的操作并保留页面；不重复弹窗骚扰用户。
+5. 若设置或 outcome 为 `disabled`，说明人工协助未启用，明确告知用户这一步没有弹窗，
+   不擅自改设置或切换后端绕过。不能谎称已打开接手窗口、用户已完成登录或任务成功。
+
+密码、短信验证码和扫码确认留在用户的浏览器里，不要求用户发到聊天。详见
+[人工协助与恢复](references/help-and-recovery.md)。
 
 ## Read and interact
 

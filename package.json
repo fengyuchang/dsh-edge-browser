@@ -1,6 +1,6 @@
 {
   "name": "dsh-edge-browser",
-  "version": "0.3.3-dsh.r5",
+  "version": "0.3.3-dsh.r6",
   "private": true,
   "type": "module",
   "description": "Visible, background Edge browser control and region annotations for DeepSeek Harness.",
