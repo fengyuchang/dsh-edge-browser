@@ -114,6 +114,26 @@ Prefer refs for frames/shadow roots; selectors search the main document. Use obs
 for ordinary controls, including before acting on HTML or screenshot findings.
 Select options by value, not visible label.
 
+## 定位失败：先观察，再决定是否重试
+
+点击或观察失败时，按“重新 observe → 确认上次操作是否已生效 → 选择当前可见目标的
+新鲜 `@eN` → 必要时重试一次 → 验证结果”恢复。提交、删除等操作结果不明时，先核实，
+不能为了换一种定位写法就重复执行。不要循环重试同一失效 target。
+
+- 定位优先级是当前观察中的 `@eN`，其次是已核实的、范围明确的 CSS。
+  `target` 不支持 `text=…`、XPath 或 Playwright 定位器；不要把“返回”等文字直接拼成选择器。
+- `DOM Error while querying`：检查定位语法，重新观察；`selector did not match`：
+  检查当前标签、弹窗和 DOM 状态。不要用逗号拼一串猜测的候选选择器。
+- `element not visible` / `no content quads`：可能命中了隐藏副本或不可见控件。
+  先观察并按需展开、悬停或滚动到正确区域，再选可见控件的引用。
+- 同一快照且页面未变化时可复用同一引用，不必每次点击都全量观察；导航、重渲染、
+  新观察或分页后，必须使用当前返回的引用。同名按钮不能证明旧引用仍有效。
+- observe 的分页 cursor 失效时，去掉 cursor 重新 observe；浏览器 session 失效时，
+  先列出本聊天自己的任务，确实已丢失才用已核实的浏览器实例新建，不能借用别的聊天。
+
+分类处理、有限重试及只读 debug 抓包旁路见
+[定位与观察恢复矩阵](references/help-and-recovery.md#target-and-observation-recovery)。
+
 Keep observations small enough for the next decision: start `observe` with
 `maxTokens: 1600`, and read `nextCursor` only if needed. Continuation replaces refs;
 use only refs actually returned by the current read. For a known region, use the

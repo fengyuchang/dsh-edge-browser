@@ -61,12 +61,53 @@ text-only models may stay blocked. Report missing inputs/capabilities or exhaust
 alternatives; continue independent work. Never repeat unknown effects or switch
 backends to bypass limits. Borrow confirmation still applies.
 
+## Target and observation recovery
+
+This applies to any site; keep site-specific selectors and private task data out
+of the general rule. The installed CLI accepts snapshot refs and CSS, not
+`text=...`, XPath, Playwright locators or arbitrary natural-language targets.
+Prefer a ref from the current observation. Use a scoped CSS selector only when
+its markup and intended visible target have been verified; bounded HTML can help
+when observe lacks the needed detail. Do not fetch HTML to replace a usable ref.
+
+| Failure | Recovery |
+| --- | --- |
+| `DOM Error while querying` | Check the target syntax first. Stop using unsupported text locators; observe the current page and use its visible target ref. This error alone does not prove the site is unavailable. |
+| `selector did not match` (including `any element`) | Verify the owned tab, current view, dialog and loaded content. Re-observe and choose a current ref; inspect bounded HTML if no ref is exposed. Do not join guessed alternatives with commas; verify candidates individually. |
+| `element not visible` / `no content quads` | A broad selector may hit a hidden duplicate, template or off-screen control. Observe the visible component, reveal a required hover/menu or use scroll-to, then choose its ref. Do not force-click hidden nodes or infer the intended action from a generic button class. |
+| Stale or unknown ref | Observe the same owned tab again and choose its newly returned ref. Navigation, rerendering and observation continuation can invalidate earlier refs. |
+| Expired/invalid observe cursor | Start a fresh observe without cursor, with a small maxTokens budget. Discard the old continuation and refs; never loop on the expired cursor. |
+| Observe itself fails without usable refs | Read the error/hint and check the owned session/tab. Use snapshot, bounded HTML or screenshot through the loaded tool schema when supported; never invent refs from an error or retry the same broken observation indefinitely. |
+| Missing/closed browser session | List this chat's owned sessions and inspect the actual state. If the task is gone, start a new session bound to the previously verified browser, navigate/borrow only as authorized, and observe. Never guess IDs, select another chat's session, or replay a possibly completed action. |
+
+The fixed recovery sequence is: **failure → fresh observe → inspect whether the
+previous action already succeeded → choose a fresh visible target → retry once
+only if still needed → verify the outcome**. For an observe/cursor error, the fresh
+observe itself is the retry. A timeout or lost reply is not proof an action failed.
+Check completion before repeating a submit, delete, send, upload or other mutation.
+Another failure after corrected targeting needs diagnosis, not an unbounded loop.
+
+A ref may be reused for repeated clicks while its snapshot and page remain
+unchanged. Do not refresh on every click just to renumber refs. Re-observe after
+navigation, relevant DOM changes, stale-target errors, or a changed observation;
+identical labels/row positions do not establish ref identity.
+
+If ordinary targeting still fails after a fresh observation and one justified
+retry, read [website debugging](debugging.md). For a data-reading task, a read-only
+debug capture can inspect the requests/responses triggered by the authorized page
+action. Start capture before reproducing, filter to the relevant business request,
+and respect redaction/coverage limits. This is a diagnostic alternative, not an
+automatic switch to replay, request modification, direct API calls, credential
+extraction, or another browser controller. Login/verification blockers follow the
+manual handoff above. If no supported path works, report the specific blocker.
+
 ## Recover
 
 - Unknown browser tool after plugin reload: invoke `skill` with `name: "browser-skill"`
   again (users can enter `/browser-skill`), then retry the intended browser tool once
   after its schema appears. If it remains unavailable, report the failure.
-- Stale ref: observe, then retry the intended action once.
+- Failed target, stale ref or observe cursor: use the recovery matrix above;
+  inspect the current state before any justified retry.
 - Unknown tab/session: list owned resources or start a session with the required
   browser selector, if any; never guess IDs.
 - Failed/interrupted stop: accepted cleanup continues in the background. Retry the
@@ -77,4 +118,5 @@ backends to bypass limits. Borrow confirmation still applies.
 - Timeout/unknown effect: inspect before retrying; the action may have happened.
 - Unconfirmed fill: read the field. Formatting may satisfy the goal; correct only a
   remaining difference instead of blindly refilling or requesting help.
-- Other errors: follow the hint; on unrecoverable failure, report and stop the owned session.
+- Other errors: follow the hint; on unrecoverable failure, report and finish the
+  owned task, preserving useful/unsaved/uncertain pages as described in the main skill.

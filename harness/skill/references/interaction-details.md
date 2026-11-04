@@ -34,6 +34,11 @@ unsupported wait. If blocked, follow [help and recovery](help-and-recovery.md).
 
 ## Interactions
 
+- Targets use current snapshot refs first, then verified scoped CSS. `text=...`,
+  XPath and Playwright locators are unsupported. Selector lists are not a recovery
+  plan: verify the intended visible control instead of combining guessed alternatives.
+  On query/no-match/visibility errors, follow the
+  [recovery matrix](help-and-recovery.md#target-and-observation-recovery).
 - Hover markers like `[hover first: Shoes | Bags]` list labels, not refs. Hover the
   trigger, observe, then use the item's ref. Click the trigger only if its action is wanted.
 - `scroll-to` returns ancestor-clipped bounds in top-level viewport CSS pixels.
@@ -48,6 +53,8 @@ No default token cap. With `maxTokens`, pass `nextCursor` as observe's `cursor` 
 continue. Each page replaces refs; use them before continuing, never reuse old ones.
 Continuation uses the same capture without refresh/depth changes. New
 observe/snapshot or changed page identity invalidates it.
+If the cursor expires or is rejected, observe again without cursor and use only
+that new result's refs. Do not repeat a rejected cursor or reuse its old refs.
 
 Console/network are bounded read-only diagnostics; follow sequence cursors.
 Wait only for expected navigation. `bsk_assist` resizes windows or emulates
