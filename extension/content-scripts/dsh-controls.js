@@ -11,6 +11,8 @@
     return result;
   };
   const raise = () => {
+    // Native click bypass rerenders the pill; keep active animations mounted.
+    if (host?.isConnected && document.documentElement.lastElementChild === host) return;
     globalThis.dshRaisePointer?.();
     if (host?.isConnected) document.documentElement.append(host);
   };

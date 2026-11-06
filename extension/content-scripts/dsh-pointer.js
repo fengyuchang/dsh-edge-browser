@@ -91,7 +91,7 @@
     refreshVisibility();
   };
   globalThis.dshRefreshActivity = renderActivity;
-  globalThis.dshRaisePointer = () => { if (host?.isConnected) document.documentElement.append(host); };
+  globalThis.dshRaisePointer = () => { if (host?.isConnected && document.documentElement.lastElementChild !== host) document.documentElement.append(host); };
   const flashScroll = direction => {
     if (!scrollGlow || paused || hintsHidden || document.hidden) return;
     scrollGlow.className = `scroll-glow ${direction < 0 ? 'up' : 'down'}`;

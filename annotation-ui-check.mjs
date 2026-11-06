@@ -72,6 +72,21 @@ try {
     __testBus.emit({type:'dsh-visual-activity',action:'wait_for_navigation',label:'等待网页加载',phase:'complete'});
     const pill=document.createElement('div');pill.id='test-control-pill';pill.textContent='DeepSeek 正在控制 · 局部标注';pill.style.cssText='position:fixed;bottom:32px;left:30%;background:white;padding:14px;border-radius:28px';document.documentElement.append(pill);dshBindControlPill(pill);Element.prototype.attachShadow=attach;return Object.keys(__testRoots);
   })()`);
+  assert.equal(await evaluate(`(async()=>{
+    const pill=document.getElementById('test-control-pill'),hosts=[document.getElementById('dsh-browser-controls'),document.getElementById('dsh-automation-pointer')];
+    let removed=0;const observer=new MutationObserver(records=>{for(const record of records)for(const node of record.removedNodes)if(hosts.includes(node))removed++;});
+    observer.observe(document.documentElement,{childList:true});
+    for(let i=0;i<8;i++)for(const enabled of [true,false]){
+      __testBus.emit({type:'bh-automation-bypass',enabled});dshBindControlPill(null);dshBindControlPill(pill);
+    }
+    await Promise.resolve();observer.disconnect();return removed;
+  })()`), 0, 'Click bypass rerenders must keep the pointer and controls mounted without restarting their animations');
+  assert.equal(await evaluate(`(()=>{
+    const cover=document.createElement('div');document.documentElement.append(cover);dshBindControlPill(document.getElementById('test-control-pill'));
+    const controls=document.getElementById('dsh-browser-controls'),pointer=document.getElementById('dsh-automation-pointer');
+    const result=controls===document.documentElement.lastElementChild&&pointer.nextElementSibling===controls;cover.remove();return result;
+  })()`), true, 'New page surfaces must still allow both overlays to be raised above the native blocker');
+  report.checks.push('Repeated click bypass rerenders do not remount animated overlays; new page surfaces still restore the overlay order');
   assert.equal(await evaluate(`(()=>{const b=__testRoots['dsh-automation-pointer'].querySelector('.activity-hide'),r=b.getBoundingClientRect();return getComputedStyle(b).pointerEvents==='auto'&&document.elementFromPoint(r.left+r.width/2,r.top+r.height/2).id==='dsh-automation-pointer'})()`), true, 'The hide button must receive a real human click above the native input blocker');
   assert.equal(await evaluate(`(()=>{__testBus.emit({type:'bh-automation-bypass',enabled:true});const result=getComputedStyle(__testRoots['dsh-automation-pointer'].querySelector('.activity-hide')).pointerEvents==='none';__testBus.emit({type:'bh-automation-bypass',enabled:false});return result})()`), true, 'AI input must pass through the interactive hint buttons');
   assert.equal(await evaluate(`(()=>{const r=__testRoots['dsh-automation-pointer'];r.querySelector('.activity-hide').click();return r.querySelector('.activity').style.display==='none'&&!__testRoots['dsh-browser-controls'].querySelector('.activity-dock').hidden})()`), true);

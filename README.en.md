@@ -4,6 +4,8 @@ Visible, background control of your everyday Edge browser for DeepSeek Harness.
 
 [中文](README.md) · [Downloads](https://github.com/fengyuchang/dsh-edge-browser/releases/latest) · [Project site](https://fengyuchang.github.io/dsh-edge-browser/)
 
+**Latest: r8, 2026-11-06.** Fixes pointer and control-hint flicker caused by repeatedly reparenting the overlay hosts during clicks. Verified with 12 native clicks in Edge. See the [changelog](docs/changelog.md) and [upgrade instructions](docs/installation.md).
+
 Built on Tencent BrowserSkill 0.3.3. This community customization reuses the
 browser's signed-in sessions, controls task tabs without moving the system mouse,
 and shows what the agent is doing. It is not an official DeepSeek or Microsoft
