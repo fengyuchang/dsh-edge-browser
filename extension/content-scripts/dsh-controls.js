@@ -1,4 +1,5 @@
 (() => {
+  if (!globalThis.chrome?.runtime?.onMessage) return;
   if (globalThis.__dshControlsInstalled) return;
   globalThis.__dshControlsInstalled = true;
   let host, root, pill, editor, stage, box, note, status, send, frozen;

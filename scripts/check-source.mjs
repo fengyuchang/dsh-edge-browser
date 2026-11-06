@@ -2,23 +2,27 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const plugin = 'packages/browser-skill-dsh-plugin';
-for (const name of ['dsh-annotations.mjs', 'dsh-session-scope.mjs', 'dsh-task-finish.mjs']) {
+for (const name of ['dsh-annotations.mjs', 'dsh-session-scope.mjs', 'dsh-task-finish.mjs', 'dsh-preview.mjs']) {
   assert.equal(read(`${plugin}/lib/${name}`), read(`harness/${name}`));
 }
 const client = read(`${plugin}/lib/client.cjs`);
 new vm.Script(client);
-assert(client.includes(read('harness/dsh-annotation-client.js').trim()));
-const embedded = read(`${plugin}/lib/index.mjs`).match(/^const BSK_SKILL_MARKDOWN = ("[^\n]*");/m);
+assert(client.includes('bsk-annotation-selected-conversation'));
+const embedded = read(`${plugin}/lib/index.mjs`).match(/^(?:const|var) BSK_SKILL_MARKDOWN = ("[^\n]*");/m);
 const skill = read(`${plugin}/skill/SKILL.md`).replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n+/, '');
 assert(embedded && JSON.parse(embedded[1]).trim() === skill.trim());
 assert.equal(skill.trim(), read('harness/skill/SKILL.md').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n+/, '').trim());
 const manifest = JSON.parse(read('extension/manifest.json'));
-assert.equal(manifest.commands['dsh-annotate'].suggested_key, 'Alt+Shift+A');
+assert.equal(manifest.commands['dsh-annotate'].suggested_key.default, 'Alt+Shift+A');
+const build=JSON.parse(read('source-build.json'));
+assert.equal(build.upstream,JSON.parse(read('source/upstream.json')).commit);
+for(const files of [build.inputs,build.outputs])for(const [file,hash] of Object.entries(files))assert.equal(createHash('sha256').update(fs.readFileSync(path.join(root,file))).digest('hex'),hash,'Rebuild source: '+file);
 assert(!manifest.permissions.includes('cookies'));
 for (const name of ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'licenses/BrowserSkill-MIT.txt', 'licenses/dsh-doyourweb-MIT.txt']) assert(fs.existsSync(path.join(root, name)));
 const page = read('docs/index.html');

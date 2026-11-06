@@ -23,6 +23,9 @@ const sandbox = vm.createContext({
   }
 });
 vm.runInContext(source.slice(start, source.indexOf('\n//#endregion', start)), sandbox);
+const sourceStart=source.indexOf('function browserSkillSource(');
+assert(sourceStart>=0);
+vm.runInContext(source.slice(sourceStart,source.indexOf('\n//#endregion',sourceStart)),sandbox);
 let unavailable = true;
 const ctx = { logger: { error() {} }, get: () => ({ list: () => [] }),
   on: (event, hook) => { hooks.set(event, hook); return () => hooks.delete(event); },
@@ -35,13 +38,13 @@ const preStep = hooks.get('agent/pre-step');
 const step = (agent, messages = []) => preStep({ agent, messages, signal: new AbortController().signal }, async () => ({ kind: 'continue', messages }));
 try {
   const failure = await step(owner, [{ id: 'invoke-1', skill: true }]);
-  assert.equal(failure.messages.at(-1).source.kind, 'browserskill-notice');
+  assert.equal(failure.messages.at(-1).source.kind, 'plugin:@wxg-prc-cpg/browser-skill-dsh-plugin');
   assert.match(failure.messages.at(-1).content[0].text, /unavailable/);
   assert.equal((await step(other)).messages.length, 0, 'No notice may be injected into a chat that did not invoke this skill');
   assert.equal((await step(owner)).messages.length, 0, 'Repeated failures do not spam the owning chat');
   unavailable = false;
   const recovery = await step(owner, [{ id: 'invoke-2', skill: true }]);
-  assert.equal(recovery.messages.at(-1).source.kind, 'browserskill-notice');
+  assert.equal(recovery.messages.at(-1).source.kind, 'plugin:@wxg-prc-cpg/browser-skill-dsh-plugin');
   assert.match(recovery.messages.at(-1).content[0].text, /now available/);
   assert.equal((await step(other)).messages.length, 0);
   assert.equal((await step(owner)).messages.length, 0);

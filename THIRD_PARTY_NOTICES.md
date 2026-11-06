@@ -5,7 +5,7 @@ Original upstream copyright notices remain in the distributed code.
 
 | Component | Source | Version / revision | License |
 | --- | --- | --- | --- |
-| BrowserSkill extension and native Harness plugin | [Tencent/BrowserSkill](https://github.com/Tencent/BrowserSkill) | 0.3.3; extension release `ext-v0.3.3` | [MIT](licenses/BrowserSkill-MIT.txt), copyright Tencent |
+| BrowserSkill extension and native Harness plugin | [Tencent/BrowserSkill](https://github.com/Tencent/BrowserSkill) | 0.4.2; extension release `ext-v0.4.2` | [MIT](licenses/BrowserSkill-MIT.txt), copyright Tencent |
 | Selected-conversation publication and annotation design adaptation | [SheepofSheep/dsh-doyourweb](https://github.com/SheepofSheep/dsh-doyourweb) | `0cbc4bf444d262caf6c47e046b90cab3d24e280f` | [MIT](licenses/dsh-doyourweb-MIT.txt) |
 | Node.js, in the Windows offline release only | [nodejs/node](https://github.com/nodejs/node) | The build's Node.js runtime | [Node.js and bundled dependencies](licenses/Node.js.txt) |
 | Harness runtime peers and transitive dependencies, in the offline release only | Individual npm packages | Pinned in `package-lock.json`; recorded in the release's `dependency-inventory.json` | Original licenses remain in each package |

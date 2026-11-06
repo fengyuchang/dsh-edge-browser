@@ -1,0 +1,38 @@
+// Change exactly one dependency in a profile; leave every unrelated lock entry intact.
+import fs from 'node:fs';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+import {createRequire} from 'node:module';
+const [profile,archive]=process.argv.slice(2);
+if(!profile||!archive)throw new Error('Profile directory and immutable browser plugin .tgz required');
+const require=createRequire(path.join(profile,'package.json'));
+const YAML=require('yaml');
+const name='@wxg-prc-cpg/browser-skill-dsh-plugin';
+const manifestPath=path.join(profile,'package.json'),lockPath=path.join(profile,'pnpm-lock.yaml');
+const original=fs.readFileSync(manifestPath,'utf8'),pkg=JSON.parse(original.replace(/^\uFEFF/,''));
+if(!pkg.dependencies?.[name])throw new Error('An existing browser dependency is required; no profile was changed');
+const specifier='file:'+path.resolve(archive).replaceAll('\\','/');
+const raw=fs.readFileSync(lockPath,'utf8'),doc=YAML.parseDocument(raw),lock=doc.toJSON();
+const entry=lock.importers?.['.']?.dependencies?.[name];
+if(!entry)throw new Error('Existing browser lock entry missing; no profile was changed');
+const oldKey=Object.keys(lock.snapshots??{}).find(k=>k.startsWith(name+'@')&&k.slice(name.length+1)===entry.version);
+if(!oldKey)throw new Error('Could not identify existing browser snapshot');
+const suffix=entry.version.includes('(')?entry.version.slice(entry.version.indexOf('(')):'';
+const key=name+'@'+specifier;
+const integrity='sha512-'+createHash('sha512').update(fs.readFileSync(archive)).digest('base64');
+const oldPackageKey=oldKey.slice(0,oldKey.indexOf('(')===-1?undefined:oldKey.indexOf('('));
+const oldPackage=lock.packages[oldPackageKey];
+if(!oldPackage)throw new Error('Existing browser package metadata missing');
+doc.setIn(['importers','.', 'dependencies',name],{specifier,version:specifier+suffix});
+doc.setIn(['packages',key],{...oldPackage,resolution:{integrity,tarball:specifier},version:'0.4.2-dsh.1'});
+doc.setIn(['snapshots',key+suffix],lock.snapshots[oldKey]);
+const next=doc.toJSON();
+const strip=data=>{const c=structuredClone(data);delete c.importers['.'].dependencies[name];for(const section of ['packages','snapshots'])for(const k of Object.keys(c[section]??{}))if(k.startsWith(name+'@'))delete c[section][k];return c;};
+if(JSON.stringify(strip(lock))!==JSON.stringify(strip(next)))throw new Error('Unrelated dependency changed');
+// Preserve all original manifest bytes except this single string value.
+const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const pattern=new RegExp('("'+escaped+'"\\s*:\\s*)"[^"\\r\\n]*"','g');let matches=0;
+const text=original.replace(pattern,(_m,prefix)=>{matches++;return prefix+JSON.stringify(specifier);});
+if(matches!==1||JSON.parse(text.replace(/^\uFEFF/,'')).dependencies[name]!==specifier)throw new Error('Ambiguous dependency text; no files were changed');
+fs.writeFileSync(manifestPath,text);fs.writeFileSync(lockPath,String(doc));
+console.log(JSON.stringify({browserDependency:specifier,unrelatedDependenciesUnchanged:true}));

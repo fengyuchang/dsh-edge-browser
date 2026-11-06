@@ -1,0 +1,933 @@
+diff --git a/apps/extension/src/browser-driver/chromium-cdp.ts b/apps/extension/src/browser-driver/chromium-cdp.ts
+index 9da254e..6157049 100644
+--- a/apps/extension/src/browser-driver/chromium-cdp.ts
++++ b/apps/extension/src/browser-driver/chromium-cdp.ts
+@@ -32,6 +32,7 @@ import type {
+   NetworkResult,
+   PendingJavaScriptDialog,
+ } from "@/transport/types";
++import { dshCdpCommand } from "@/dsh/dsh-pointer-relay.js";
+ import { BackgroundExecution } from "./background-execution";
+ import { CdpReadGate, CdpReadTimeoutError, READ_TIMEOUT_MS } from "./command-deadline";
+ import {
+@@ -87,7 +88,7 @@ export const chromeDebuggerApi: CdpDebuggerApi = {
+   attach: (target, version) => chrome.debugger.attach(target, version),
+   detach: (target) => chrome.debugger.detach(target),
+   sendCommand: (target, method, commandParams) =>
+-    chrome.debugger.sendCommand(target, method, commandParams),
++    dshCdpCommand(target, method, commandParams),
+   get onEvent() {
+     return chrome.debugger.onEvent;
+   },
+diff --git a/apps/extension/src/content/ControlGlow.tsx b/apps/extension/src/content/ControlGlow.tsx
+index c71fab9..da5d0b6 100644
+--- a/apps/extension/src/content/ControlGlow.tsx
++++ b/apps/extension/src/content/ControlGlow.tsx
+@@ -33,7 +33,7 @@ export function ControlGlow() {
+           inset: 0,
+           zIndex: 2147483646,
+           pointerEvents: "none",
+-          boxShadow: "inset 0 0 20px 4px rgba(249,115,22,0.25)",
++          boxShadow: "inset 0 0 20px 4px rgba(250,204,21,0.25)",
+         }}
+       >
+         <div
+@@ -42,7 +42,7 @@ export function ControlGlow() {
+           style={{
+             position: "absolute",
+             inset: 0,
+-            boxShadow: "inset 0 0 40px 8px rgba(249,115,22,0.5)",
++            boxShadow: "inset 0 0 40px 8px rgba(250,204,21,0.5)",
+             opacity: 0,
+           }}
+         />
+diff --git a/apps/extension/src/content/ControlOverlay.tsx b/apps/extension/src/content/ControlOverlay.tsx
+index 0a0061e..cc3057e 100644
+--- a/apps/extension/src/content/ControlOverlay.tsx
++++ b/apps/extension/src/content/ControlOverlay.tsx
+@@ -104,6 +104,7 @@ export function ControlOverlay({
+       {!state && <ControlInputBlocker automationBypass={automationBypass} />}
+       <AgentTarget target={state?.target} name={controller?.name} />
+       <div
++        ref={globalThis.dshBindControlPill}
+         className="bsk-cooperation"
+         data-slot={state ? "cooperation-toolbar" : "control-overlay-card"}
+         data-mode={state?.mode}
+@@ -181,6 +182,8 @@ export function ControlOverlay({
+               </span>
+             </button>
+           )}
++          <button type="button" title="局部标注（Alt+Shift+A）" onClick={() => globalThis.dshStartAnnotation?.()}>▧ 局部标注</button>
++          <button type="button" title="收起控制提示" aria-label="收起控制提示到页面底部" onClick={() => globalThis.dshCollapseControl?.(true)}>⌄</button>
+           <button
+             className="bsk-cooperation-stop"
+             data-slot="control-overlay-stop-all"
+diff --git a/apps/extension/src/entrypoints/__tests__/background-overlays.test.ts b/apps/extension/src/entrypoints/__tests__/background-overlays.test.ts
+index f65b5e6..1979282 100644
+--- a/apps/extension/src/entrypoints/__tests__/background-overlays.test.ts
++++ b/apps/extension/src/entrypoints/__tests__/background-overlays.test.ts
+@@ -89,6 +89,8 @@ async function fixture() {
+     },
+   );
+   vi.stubGlobal("chrome", {
++    windows: { onRemoved: event() },
++    commands: { onCommand: event() },
+     tabs: {
+       sendMessage,
+       get: vi.fn(async () => ({ url: "https://example.test" })),
+@@ -111,6 +113,7 @@ async function fixture() {
+     },
+     debugger: { onDetach: event() },
+     webNavigation: {
++      onCommitted: event(),
+       onBeforeNavigate: event(),
+       onCompleted: event(),
+       onErrorOccurred: event(),
+diff --git a/apps/extension/src/entrypoints/__tests__/content-video-recovery.test.ts b/apps/extension/src/entrypoints/__tests__/content-video-recovery.test.ts
+index 5a2a4b7..e1308f9 100644
+--- a/apps/extension/src/entrypoints/__tests__/content-video-recovery.test.ts
++++ b/apps/extension/src/entrypoints/__tests__/content-video-recovery.test.ts
+@@ -284,7 +284,7 @@ it("adds cooperation controls to the same card only after receiving real coopera
+   await vi.advanceTimersByTimeAsync(1100);
+   const card = f.find('[data-slot="control-overlay-card"]')!;
+   const glow = f.find('[data-slot="control-overlay"]');
+-  expect(card.querySelectorAll("button")).toHaveLength(1);
++  expect(card.querySelectorAll("button")).toHaveLength(3);
+   expect(card.getAttribute("data-mode")).toBeNull();
+   f.send({ type: INPUT_PASSTHROUGH, phase: "begin", id: "claim-click" });
+   vi.mocked(chrome.runtime.sendMessage).mockClear();
+@@ -294,7 +294,7 @@ it("adds cooperation controls to the same card only after receiving real coopera
+   expect(f.find('[data-slot="cooperation-toolbar"]')).toBe(card);
+   expect(f.find('[data-slot="control-overlay"]')).toBe(glow);
+   expect(card.getAttribute("data-mode")).toBe("held");
+-  expect(card.querySelectorAll("button")).toHaveLength(2);
++  expect(card.querySelectorAll("button")).toHaveLength(4);
+   expect(f.visible("control-overlay-blocker")).toBe(false);
+   const host = document.querySelector("browser-skill-overlay")!;
+   expect(host.hasAttribute("data-bsk-overlay-surface")).toBe(false);
+diff --git a/apps/extension/src/entrypoints/background.ts b/apps/extension/src/entrypoints/background.ts
+index 3809017..ad46818 100644
+--- a/apps/extension/src/entrypoints/background.ts
++++ b/apps/extension/src/entrypoints/background.ts
+@@ -1,4 +1,8 @@
+ import { i18n } from "@browser-skill/i18n";
++import { dshInstallTaskGroups } from "@/dsh/dsh-task-groups.js";
++import { dshInstallVisualActivity } from "@/dsh/dsh-visual-activity.js";
++import { dshInstallPointerRelay } from "@/dsh/dsh-pointer-relay.js";
++import { dshInstallAnnotations } from "@/dsh/dsh-annotations.js";
+ import { ChromiumCdp } from "@/browser-driver/chromium-cdp";
+ import { attachCooperation } from "@/cooperation/browser-bridge";
+ import { LocalDebugArchive } from "@/debug/archive";
+@@ -71,6 +75,10 @@ import { VideoManager } from "@/video/manager";
+ import { VIDEO_OVERLAY } from "@/video/overlay";
+ 
+ export default defineBackground(() => {
++  dshInstallTaskGroups();
++  dshInstallVisualActivity();
++  dshInstallPointerRelay();
++  dshInstallAnnotations();
+   const controller = new ConnectionController();
+   let remoteEndpoint: RemoteEndpoint | null = null;
+   let connectionPreferenceValid = false;
+diff --git a/apps/extension/src/entrypoints/content.ts b/apps/extension/src/entrypoints/content.ts
+index 613260c..e05d89b 100644
+--- a/apps/extension/src/entrypoints/content.ts
++++ b/apps/extension/src/entrypoints/content.ts
+@@ -1,3 +1,5 @@
++import "@/dsh/content/dsh-controls.js";
++import "@/dsh/content/dsh-pointer.js";
+ import { i18n } from "@browser-skill/i18n";
+ import { I18nextProvider } from "@browser-skill/i18n/react";
+ import React from "react";
+@@ -202,6 +204,7 @@ export default defineContentScript({
+       const cooperationState =
+         controlVisible && !interactiveOverlayVisible ? activeAgentState?.cooperation : undefined;
+       const cardVisible = controlOverlayVisible || !!cooperationState;
++      globalThis.dshSetControlState?.({ active: cardVisible && (!cooperationState || ["ready", "acting", "syncing"].includes(cooperationState.mode)) });
+       setOverlayHostHiddenFromAccessibility(!interactiveOverlayVisible && !cardVisible);
+       setOverlaySurfaceState(
+         controlOverlayVisible,
+diff --git a/apps/extension/src/session-manager/__tests__/agent-window.test.ts b/apps/extension/src/session-manager/__tests__/agent-window.test.ts
+index 8262e63..9b21e2f 100644
+--- a/apps/extension/src/session-manager/__tests__/agent-window.test.ts
++++ b/apps/extension/src/session-manager/__tests__/agent-window.test.ts
+@@ -60,7 +60,7 @@ describe("chromeAgentWindowApi.create", () => {
+ 
+   beforeEach(() => {
+     vi.stubGlobal("chrome", {
+-      windows: { create },
++      windows: { create, update: vi.fn(async () => ({})) },
+       extension: { isAllowedIncognitoAccess },
+     });
+     create.mockReset();
+@@ -86,6 +86,7 @@ describe("chromeAgentWindowApi.create", () => {
+     expect(create).toHaveBeenCalledWith({
+       type: "normal",
+       focused: false,
++      state: "minimized",
+       incognito: false,
+       url: AGENT_WINDOW_HOME,
+     });
+@@ -130,6 +131,7 @@ describe("chromeAgentWindowApi.create", () => {
+       type: "normal",
+       focused: false,
+       incognito: true,
++      state: "minimized",
+       url: AGENT_WINDOW_HOME,
+     });
+   });
+diff --git a/apps/extension/src/session-manager/agent-window.ts b/apps/extension/src/session-manager/agent-window.ts
+index 09a3b07..4ee8140 100644
+--- a/apps/extension/src/session-manager/agent-window.ts
++++ b/apps/extension/src/session-manager/agent-window.ts
+@@ -7,6 +7,8 @@
+  * `__tests__/manager.test.ts`).
+  */
+ 
++import { dshGroupAgentWindow } from "@/dsh/dsh-task-groups.js";
++
+ export interface AgentWindowApi {
+   create(url: string, opts?: AgentWindowCreateOptions): Promise<AgentWindowCreation>;
+   remove(windowId: number): Promise<void>;
+@@ -51,6 +53,7 @@ export const chromeAgentWindowApi: AgentWindowApi = {
+     const win = await chrome.windows.create({
+       type: "normal",
+       focused: opts.focused ?? false,
++      ...(!opts.focused && !opts.size ? { state: "minimized" as const } : {}),
+       incognito: opts.incognito ?? false,
+       url,
+       ...(opts.size ? { width: opts.size.width, height: opts.size.height } : {}),
+@@ -58,6 +61,13 @@ export const chromeAgentWindowApi: AgentWindowApi = {
+     if (typeof win?.id !== "number") {
+       throw new Error("[bh] chrome.windows.create returned no window id");
+     }
++    // Edge on Windows may ignore create({state:'minimized'}). Never activate
++    // the task window; minimize its exact ID before any initialization work.
++    if (!opts.focused) {
++      try { await chrome.windows.update(win.id, { state: "minimized" }); }
++      catch { /* A cosmetic failure must not leak or fail an owned startup. */ }
++    }
++    await dshGroupAgentWindow(win);
+     return {
+       windowId: win.id,
+       incognito: win.incognito,
+diff --git a/apps/extension/src/tools/__tests__/dispatcher.test.ts b/apps/extension/src/tools/__tests__/dispatcher.test.ts
+index 3ce4a8a..71b8132 100644
+--- a/apps/extension/src/tools/__tests__/dispatcher.test.ts
++++ b/apps/extension/src/tools/__tests__/dispatcher.test.ts
+@@ -432,7 +432,7 @@ describe("ToolDispatcher", () => {
+     dispatcher.start();
+ 
+     deliver(makeRequest("tool.session_stop", { session_id: "aa11" }));
+-    await flushMicrotasks();
++    await vi.waitFor(() => expect(sent).toHaveLength(1));
+     expect(sessions.has("aa11")).toBe(false);
+     expect(release).toHaveBeenCalledExactlyOnceWith("aa11");
+     expect(cooperation.hasSession("aa11")).toBe(false);
+@@ -735,7 +735,7 @@ describe("ToolDispatcher", () => {
+     // ...and the window is released rather than closed, so the user's tab survives.
+     expect(closeWindow).not.toHaveBeenCalled();
+     expect(sessions.has("aa11")).toBe(false);
+-    expect(sent[0]).toEqual({ id: "r-1", result: { window_released: true } });
++    await vi.waitFor(() => expect(sent[0]).toEqual({ id: "r-1", result: { window_released: true } }));
+   });
+ 
+   it("routes tool.console through the CDP console buffer", async () => {
+@@ -883,7 +883,8 @@ describe("ToolDispatcher", () => {
+     await vi.waitFor(() => expect(sent).toHaveLength(1));
+ 
+     expect(sent[0]).toMatchObject({ result: { tab_id: 7, file_names: ["test.png"] } });
+-    expect(sendMessage).not.toHaveBeenCalled();
++    const messages = sendMessage.mock.calls as unknown as [number, { type: string }][];
++    expect(messages.every(([, message]) => message.type === 'dsh-visual-activity')).toBe(true);
+   });
+ 
+   it("detaches CDP state before stopping a session", async () => {
+diff --git a/apps/extension/src/tools/dispatcher.ts b/apps/extension/src/tools/dispatcher.ts
+index 4f134b9..7cbf99f 100644
+--- a/apps/extension/src/tools/dispatcher.ts
++++ b/apps/extension/src/tools/dispatcher.ts
+@@ -1,4 +1,6 @@
+ import type { CooperationController } from "@/cooperation/controller";
++import { dshAnnotationOperation } from "@/dsh/dsh-annotations.js";
++import { dshVisualOperation } from "@/dsh/dsh-visual-activity.js";
+ import type { DebugManager, DebugTicket } from "@/debug/manager";
+ import type { DebugParams } from "@/debug/types";
+ import type { InteractionPreferenceStore } from "@/lib/interaction-preferences";
+@@ -790,6 +792,18 @@ export class ToolDispatcher {
+       signal,
+     );
+     if (preparationError) return preparationError;
++    const dsh = { sessions: this.sessions };
++    return dshAnnotationOperation(dsh, req, signal, () =>
++      dshVisualOperation(dsh, req, () => this.invokeDshAction(req, signal, onInputSent, cdp, completionSignal)));
++  }
++
++  private async invokeDshAction(
++    req: RequestFrame,
++    signal: AbortSignal,
++    onInputSent?: (tabId: number) => void,
++    cdp = this.cdp,
++    completionSignal = signal,
++  ): Promise<unknown | RpcError> {
+     switch (req.method) {
+       case "tool.video":
+         if (!this.video)
+@@ -915,15 +929,18 @@ export class ToolDispatcher {
+         return this.screenshotExports.read(req.params as ScreenshotReadParams);
+       case "tool.screenshot_release":
+         return this.screenshotExports.release(req.params as ScreenshotReleaseParams);
+-      case "tool.screenshot":
+-        return handleScreenshot(
++      case "tool.screenshot": {
++        const preview = (req.params as { dsh_preview?: boolean }).dsh_preview === true;
++        const shot = await handleScreenshot(
+           this.sessions,
+           req.params as ScreenshotParams,
+           cdp
+-            ? { cdp, tabsApi: chromeTabsCaptureApi, captureApi: chromeTabsCaptureApi }
++            ? { cdp, tabsApi: chromeTabsCaptureApi, captureApi: chromeTabsCaptureApi, preview, ...(preview ? { sendToTab: async () => ({ ok: true }) } : {}) }
+             : undefined,
+           signal,
+         );
++        return preview && shot && "image_base64" in shot ? { ...shot, dsh_preview: true } : shot;
++      }
+       case "tool.console":
+         return handleConsole(
+           this.sessions,
+diff --git a/apps/extension/src/tools/observation.ts b/apps/extension/src/tools/observation.ts
+index 13f7a84..a925d97 100644
+--- a/apps/extension/src/tools/observation.ts
++++ b/apps/extension/src/tools/observation.ts
+@@ -128,6 +128,8 @@ export function stripDataUrlPrefix(dataUrl: string): string {
+ }
+ 
+ export interface ScreenshotDeps {
++  /** Human-only preview; controlled viewport only, no refs or visual receipts. */
++  preview?: boolean;
+   cdp?: SharedCdpRunner;
+   tabsApi: ChromeTabsApi;
+   captureApi: ChromeTabsCaptureApi;
+@@ -293,6 +295,9 @@ export async function handleScreenshot(
+   );
+   if (isRpcError(target)) return target;
+   if (signal?.aborted) return cancelled("screenshot");
++  if (deps.preview && (params.ref || target.windowId !== ctx.agentWindowId || !isAgentControlledTab(ctx, target.tabId))) {
++    return { code: "permission_denied", message: "Human preview requires this task's own viewport" };
++  }
+   const dialogCursor = deps.cdp ? markDialogCursor(deps.cdp, target.tabId) : 0;
+   const withShotDialogs = <T extends object>(result: T) =>
+     deps.cdp ? attachDialogs(deps.cdp, target.tabId, dialogCursor, result) : result;
+diff --git a/apps/extension/src/tools/tabs.ts b/apps/extension/src/tools/tabs.ts
+index 1dc82c6..7c22693 100644
+--- a/apps/extension/src/tools/tabs.ts
++++ b/apps/extension/src/tools/tabs.ts
+@@ -1,4 +1,5 @@
+ import { withUiTeardown } from "@/session-manager/ui-activity";
++import { dshKeepTaskTab } from "@/dsh/dsh-task-finish.js";
+ // Tab-tool handlers. M6 wired `tool.tab_list`; M8 adds the rest of
+ // the tab namespace: `tab_create`, `tab_close`, `tab_select`,
+ // `tab_borrow`, `tab_return`. The dispatcher routes each method to a
+@@ -1994,6 +1995,9 @@ export async function handleTabReturn(
+   if (aborted(deps.signal, "tab_return")) {
+     return { code: "cancelled", message: "tab_return aborted" };
+   }
++  if (ctx.agentCreatedTabs.has(params.tab_id)) {
++    return dshKeepTaskTab(ctx, params, deps, deps.agentOverlayReset ?? chromeAgentOverlayResetApi);
++  }
+   if (!ctx.borrowedTabs.has(params.tab_id)) {
+     return {
+       code: "not_found",
+diff --git a/apps/extension/tsconfig.json b/apps/extension/tsconfig.json
+index 89a886b..54245dc 100644
+--- a/apps/extension/tsconfig.json
++++ b/apps/extension/tsconfig.json
+@@ -1,6 +1,7 @@
+ {
+   "extends": "./.wxt/tsconfig.json",
+   "compilerOptions": {
++    "allowJs": true,
+     "jsx": "react-jsx",
+     "types": ["chrome"],
+     "baseUrl": ".",
+diff --git a/apps/extension/wxt.config.ts b/apps/extension/wxt.config.ts
+index 73b6f4c..d1c4837 100644
+--- a/apps/extension/wxt.config.ts
++++ b/apps/extension/wxt.config.ts
+@@ -33,7 +33,8 @@ export default defineConfig({
+   outDir: "dist",
+   modules: ["@wxt-dev/module-react"],
+   manifest: {
+-    name: "BrowserSkill",
++    name: "DeepSeek Harness",
++    version_name: "0.4.2 DSH 1",
+     description:
+       "Let AI agents use your logged-in browser in a separate Agent Window—without interrupting your work. Powered by the bsk CLI.",
+     // Flat debugger sessions are required to address out-of-process iframes.
+@@ -54,6 +55,7 @@ export default defineConfig({
+       "windows",
+     ],
+     host_permissions: ["<all_urls>"],
++    commands: { "dsh-annotate": { suggested_key: { default: "Alt+Shift+A" }, description: "打开当前 DeepSeek 任务页的局部标注" } },
+     icons: {
+       16: "icon/logo.png",
+       32: "icon/logo.png",
+@@ -61,7 +63,7 @@ export default defineConfig({
+       128: "icon/logo.png",
+     },
+     action: {
+-      default_title: "BrowserSkill",
++      default_title: "DeepSeek Harness",
+       default_icon: {
+         16: "icon/logo.png",
+         32: "icon/logo.png",
+@@ -85,6 +87,7 @@ export default defineConfig({
+       },
+     ],
+     define: {
++      __DSH_HARNESS_URL__: JSON.stringify(process.env.BSK_DSH_HTTP_BASE ?? "http://127.0.0.1:3080"),
+       __BSK_EXT_BUILD__: JSON.stringify(EXTENSION_BUILD),
+       __BSK_EXT_VERSION__: JSON.stringify(EXTENSION_VERSION),
+       __BSK_DAEMON_WS_URL__: JSON.stringify(
+diff --git a/packages/dsh-plugin-browserskill/src/browser-tools.ts b/packages/dsh-plugin-browserskill/src/browser-tools.ts
+index 7357e43..1daa4a0 100644
+--- a/packages/dsh-plugin-browserskill/src/browser-tools.ts
++++ b/packages/dsh-plugin-browserskill/src/browser-tools.ts
+@@ -7,6 +7,7 @@
+ 
+ import { defineTool, type ParameterSchemaSpec, type ToolDefinition } from "@deepseek-ai/dsh-tools";
+ import { DEBUG_PARAMETERS } from "./debug-tool";
++import { executeScopedBrowserAction } from "./dsh-session-scope.mjs";
+ import { disposeAll } from "./disposables";
+ import { EXTRACT_PARAMETERS } from "./extract-tool";
+ import {
+@@ -85,6 +86,7 @@ function definitionFor(
+ function defineBrowserTool(
+   spec: BrowserToolSpec,
+   definitions: ReadonlyMap<string, ToolDefinition>,
++  deps: ToolDeps,
+ ): ToolDefinition {
+   const actionNames = Object.keys(spec.actions);
+   return defineTool({
+@@ -125,6 +127,8 @@ function defineBrowserTool(
+       return definition.isConcurrencySafe?.(operationArgs(args)) === true;
+     },
+     async execute(args, exec) {
++      return executeScopedBrowserAction(deps, spec.name, args, exec, async (scoped: typeof args) => {
++      args = scoped;
+       const definition = definitionFor(definitions, spec.actions, args.action);
+       validateExpectations(args.expect);
+       return (await definition.execute(operationArgs(args), {
+@@ -134,6 +138,7 @@ function defineBrowserTool(
+         observationId: definition.name === "interact.drag" ? undefined : args.observationId,
+         actionExpectations: args.expect,
+       } as typeof exec)) as never;
++      });
+     },
+     finalizeContent(exec, result) {
+       // The host also finalizes calls rejected before argument validation.
+@@ -178,6 +183,7 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
+       "acknowledgement, specify a target. Once accepted, cleanup continues if the call is aborted.",
+     actions: {
+       start: "session.start",
++      finish: "session.finish",
+       stop: "session.stop",
+       list: "session.list",
+       share: "session.cooperate.enable",
+@@ -186,6 +192,10 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
+       "cooperation-status": "session.cooperate.status",
+     },
+     parameters: {
++      keepTabIds: { type: "array", items: { type: "integer" }, description: "finish: this task's result/form tab IDs to keep as ordinary pages. Keep useful or uncertain pages; disposable task tabs close. Borrowed user tabs return automatically." },
++      agentName: { type: "string", description: "start: controller display name; defaults to DeepSeek Harness." },
++      project: { type: "string", description: "start: project label; defaults to the owning chat's short ID." },
++      controllerColor: { type: "string", description: "start: optional #RRGGBB controller color." },
+       ...SESSION_STOP_PARAMS,
+       tabId: TAB_ID_PARAM,
+       timeoutMs: TIMEOUT_MS_PARAM,
+@@ -530,7 +540,7 @@ export function registerBrowserTools(deps: ToolDeps): () => void {
+   const operations = indexOperations(createBrowserOperationDefinitions(deps));
+   // Validate every definition before publishing any schema. The host emits
+   // changes per registration; this is rollback, not an atomic registry update.
+-  const definitions = BROWSER_TOOL_SPECS.map((spec) => defineBrowserTool(spec, operations));
++  const definitions = BROWSER_TOOL_SPECS.map((spec) => defineBrowserTool(spec, operations, deps));
+   const disposers: (() => void)[] = [];
+   for (const definition of definitions) {
+     try {
+diff --git a/packages/dsh-plugin-browserskill/src/client/index.ts b/packages/dsh-plugin-browserskill/src/client/index.ts
+index 8694793..9be22af 100644
+--- a/packages/dsh-plugin-browserskill/src/client/index.ts
++++ b/packages/dsh-plugin-browserskill/src/client/index.ts
+@@ -6,6 +6,7 @@
+  */
+ 
+ import type { Context as ClientContext } from "@deepseek-ai/cordis";
++import { dshRegisterAnnotationClient } from "../dsh-annotation-client.js";
+ import type { ISessions } from "@deepseek-ai/dsh-api-session-controller/client";
+ import type { ImageAttachmentRef } from "@deepseek-ai/dsh-attachment";
+ // Type-only: pulls the 'shell.overlay' SlotMap merge into scope.
+@@ -67,6 +68,7 @@ async function overlayImageLoader(attachmentId: string): Promise<string> {
+  * @param ctx - client root context.
+  */
+ export function apply(ctx: ClientContext): void {
++  dshRegisterAnnotationClient(ctx);
+   const sessions = ctx.get("sessions") as unknown as ISessions;
+   ctx.slots.inject("tool.call.toolview", () =>
+     ctx.slots.register(
+diff --git a/packages/dsh-plugin-browserskill/src/index.ts b/packages/dsh-plugin-browserskill/src/index.ts
+index dcd9504..9076267 100644
+--- a/packages/dsh-plugin-browserskill/src/index.ts
++++ b/packages/dsh-plugin-browserskill/src/index.ts
+@@ -11,6 +11,11 @@
+  */
+ 
+ import type { Context } from "@deepseek-ai/cordis";
++import { createUserMessage } from "@deepseek-ai/dsh-llm";
++import { registerAnnotationRoutes } from "./dsh-annotations.mjs";
++import { armTaskCompletion } from "./dsh-task-finish.mjs";
++import { parseBskJson } from "./runner";
++import { createPreviewTransport } from "./dsh-preview.mjs";
+ import Schema from "@deepseek-ai/schemastery";
+ import { armArchiveCleanup } from "./archive-cleanup";
+ import { registerBrowserTools } from "./browser-tools";
+@@ -86,6 +91,13 @@ export function apply(
+     lazyTools: config.lazyTools ?? true,
+   };
+   const runner = options.runnerFactory?.(resolved.bskPath) ?? createBskRunner(resolved.bskPath);
++  if (!options.runnerFactory) {
++    const preview = createPreviewTransport(async () => parseBskJson(await runner.run(["status"], { timeoutMs: 5000 }), "preview daemon status"));
++    runner.capturePreview = preview.capture;
++    const killFor = runner.killFor.bind(runner), killAll = runner.killAll.bind(runner);
++    runner.killFor = tag => killFor(tag) + preview.killFor(tag);
++    runner.killAll = () => { preview.dispose(); killAll(); };
++  }
+   const registry = new SessionRegistry(resolved.maxSessions);
+   const queue = new KeyedExecutor();
+   const observation = new ObservationService({
+@@ -145,12 +157,15 @@ export function apply(
+   // AFTER this plugin loads, and in headless compositions it never appears (the
+   // callback simply never runs, leaving the rest of the plugin unaffected).
+   ctx.inject(["webServer"], (injected) => {
+-    return registerObservationRoutes(injected, observation, starts);
++    const dispose = registerObservationRoutes(injected, observation, starts);
++    const annotations = registerAnnotationRoutes(injected, registry, createUserMessage);
++    return () => { annotations(); dispose(); };
+   });
+   // Reap a conversation's browsers when the conversation itself is archived:
+   // archived sessions are hidden from every surface, so their Agent Windows
+   // would otherwise linger unreachable until idle timeout or unload.
+   disposers.push(armArchiveCleanup(ctx, starts));
++  disposers.push(armTaskCompletion(ctx, deps, parseBskJson));
+ 
+   // Non-blocking install probe: warn early when bsk is missing instead of
+   // failing the first tool call with a bare spawn error. Uses --version on
+diff --git a/packages/dsh-plugin-browserskill/src/observation.ts b/packages/dsh-plugin-browserskill/src/observation.ts
+index 855f06b..6795659 100644
+--- a/packages/dsh-plugin-browserskill/src/observation.ts
++++ b/packages/dsh-plugin-browserskill/src/observation.ts
+@@ -434,7 +434,7 @@ export class ObservationService {
+       const result = await this.deps.queue.run(sessionId, async () => {
+         // The last viewer may have left, or foreground work arrived, while queued.
+         if (!this.canCapture(sessionId)) return Promise.resolve(undefined);
+-        const capture = this.deps.runner.run(
++        const capture = this.deps.runner.capturePreview ? this.deps.runner.capturePreview(sessionId, { timeoutMs: 6000, tag: `observation:${sessionId}` }) : this.deps.runner.run(
+           ["screenshot", "--session", sessionId, "--out", outPath],
+           {
+             timeoutMs: 15_000,
+@@ -466,9 +466,9 @@ export class ObservationService {
+         }
+         throw new Error(`screenshot exited ${result.code}`);
+       }
+-      const reply = JSON.parse(result.stdout) as { path?: string };
++      const reply = JSON.parse(result.stdout) as { path?: string; image_base64?: string };
+       writtenPath = reply.path ?? outPath;
+-      const data = await readFile(writtenPath);
++      const data = typeof reply.image_base64 === "string" ? Buffer.from(reply.image_base64, "base64") : await readFile(writtenPath);
+       const entry = this.observations.get(sessionId);
+       if (entry === undefined) return;
+       this.captureFailures.delete(sessionId);
+diff --git a/packages/dsh-plugin-browserskill/src/runner.ts b/packages/dsh-plugin-browserskill/src/runner.ts
+index 5d0d3bc..89d913f 100644
+--- a/packages/dsh-plugin-browserskill/src/runner.ts
++++ b/packages/dsh-plugin-browserskill/src/runner.ts
+@@ -70,6 +70,8 @@ export type SpawnImpl = (
+ ) => ChildProcess;
+ 
+ export interface BskRunner {
++  /** Explicit human-only frames; never used by model-facing screenshot tools. */
++  capturePreview?(sessionId: string, options?: BskRunOptions): Promise<BskRunResult>;
+   /** Run `bsk <args...> --json` and collect its output. */
+   run(args: string[], options?: BskRunOptions): Promise<BskRunResult>;
+   /** Kill every still-running child (used when the plugin unloads). */
+diff --git a/packages/dsh-plugin-browserskill/src/session-starts.ts b/packages/dsh-plugin-browserskill/src/session-starts.ts
+index 74bfe5a..fa86db5 100644
+--- a/packages/dsh-plugin-browserskill/src/session-starts.ts
++++ b/packages/dsh-plugin-browserskill/src/session-starts.ts
+@@ -24,6 +24,7 @@ interface RequestStatus {
+ }
+ 
+ export interface StopOptions {
++  ownerId?: string;
+   sessionId?: string;
+   /** Exact target for recovery, including starts that never returned a session ID. */
+   requestId?: string;
+@@ -158,10 +159,10 @@ export class SessionStarts {
+   }
+ 
+   /** Accept a durable stop; aborting its caller only cancels waiting, never cleanup. */
+-  async stop({ sessionId, requestId, signal }: StopOptions = {}): Promise<StopResult> {
++  async stop({ sessionId, requestId, signal, ownerId }: StopOptions = {}): Promise<StopResult> {
+     if (signal?.aborted) throw abortError();
+     if (this.closing) throw new Error("browser plugin is unloading");
+-    const record = this.resolveStop(sessionId, requestId);
++    const record = this.resolveStop(sessionId, requestId, ownerId);
+     const stopped = record.session?.sessionId ?? "pending browser starts";
+     const alreadyClosed = record.stop === "closed";
+     const implicit = !sessionId?.trim() && requestId === undefined;
+@@ -201,14 +202,14 @@ export class SessionStarts {
+     }
+   }
+ 
+-  private resolveStop(sessionId?: string, requestId?: string): StartRecord {
++  private resolveStop(sessionId?: string, requestId?: string, ownerId?: string): StartRecord {
+     if (requestId !== undefined) {
+       if (sessionId !== undefined) throw new Error("Specify either session or requestId, not both");
+       const record = this.journal.records.get(requestId);
+-      if (!record) throw new Error("browser stop request does not belong to this plugin");
++      if (!record || (ownerId && !record.owners.includes(ownerId))) throw new Error("browser stop request does not belong to this conversation");
+       return record;
+     }
+-    const records = [...this.journal.records.values()];
++    const records = [...this.journal.records.values()].filter(r => !ownerId || r.owners.includes(ownerId));
+     const receipts = records.filter((r) => r.stop !== undefined);
+     if (sessionId?.trim()) {
+       // Prefer a previous stop even if Chrome has since reused its short ID.
+@@ -221,7 +222,7 @@ export class SessionStarts {
+           `Several stops await acknowledgement (${receipts.map((r) => `${r.session?.sessionId ?? "pending start"}: ${r.requestId}`).join(", ")}); specify session or requestId to retry one`,
+         );
+       }
+-      if (this.deps.registry.current() === undefined) {
++      if (ownerId || this.deps.registry.current() === undefined) {
+         const pending = records.filter((r) => r.cleanup);
+         if (pending.length === 1) return pending[0];
+         if (pending.length > 1)
+@@ -230,7 +231,11 @@ export class SessionStarts {
+           );
+       }
+     }
+-    const id = this.deps.registry.resolveForStop(sessionId);
++    const owned = ownerId ? this.deps.registry.ownedByDsh(ownerId) : undefined;
++    const current = this.deps.registry.current();
++    const target = sessionId ?? (owned ? (current && owned.includes(current) ? current : owned.filter(id => this.deps.registry.isUsable(id)).at(-1)) : undefined);
++    if (owned && (!target || !owned.includes(target))) throw new Error("browser session does not belong to this conversation");
++    const id = this.deps.registry.resolveForStop(target);
+     const ownedRequestId = this.deps.registry.requestFor(id);
+     const record = ownedRequestId ? this.journal.records.get(ownedRequestId) : undefined;
+     if (!record || !this.ownsRegisteredSession(record))
+diff --git a/packages/dsh-plugin-browserskill/src/tools.ts b/packages/dsh-plugin-browserskill/src/tools.ts
+index d048534..b482f60 100644
+--- a/packages/dsh-plugin-browserskill/src/tools.ts
++++ b/packages/dsh-plugin-browserskill/src/tools.ts
+@@ -17,6 +17,7 @@ import {
+   type ToolRunContext,
+ } from "@deepseek-ai/dsh-tools";
+ import { ownerSessionIds } from "./archive-cleanup";
++import { finishBrowserTask } from "./dsh-task-finish.mjs";
+ import {
+   appendSavedObservationOptions,
+   SAVED_OBSERVATION_PARAMETERS,
+@@ -524,6 +525,17 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
+     }),
+   );
+ 
++  register(
++    defineTool({
++      name: "session.finish",
++      description: "Finish this browser task before answering. Keep useful result/form pages, close disposable intermediates and release control. A failed transfer retains pages for retry.",
++      parameters: { session: SESSION_PARAM, keepTabIds: { type: "array", items: { type: "integer" }, description: "IDs from this task's tab list to preserve." } },
++      output: { schema: { type: "json" }, render: (_args, value) => [{ type: "text", text: JSON.stringify(value) }] },
++      execute: (args, exec) => finishBrowserTask(deps, args, exec, parseBskJson),
++      presentCall: () => ({ card: "terminal", title: "Finish browser task", description: "保留结果页并释放浏览器控制" }),
++      presentResult: presentTerminalResult,
++    }),
++  );
+   register(
+     defineTool({
+       name: "session.stop",
+@@ -557,6 +569,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
+           return await starts.stop({
+             sessionId: args.session,
+             requestId: args.requestId,
++            ownerId: exec.agent?.id,
+             signal: exec.signal,
+           });
+         } catch (error) {
+diff --git a/packages/dsh-plugin-browserskill/tests/client/browser-inspect-toolview.test.tsx b/packages/dsh-plugin-browserskill/tests/client/browser-inspect-toolview.test.tsx
+index 7d8e8eb..b7c4ebe 100644
+--- a/packages/dsh-plugin-browserskill/tests/client/browser-inspect-toolview.test.tsx
++++ b/packages/dsh-plugin-browserskill/tests/client/browser-inspect-toolview.test.tsx
+@@ -239,6 +239,7 @@ describe("client plugin registration", () => {
+     };
+     apply(ctx as never);
+     expect(registrations).toEqual([
++      { name: "conversation.input.overlay", id: "bsk-annotation-selected-conversation", inject: expect.any(Function) },
+       { name: "tool.call.toolview", key: "bsk_inspect" },
+       { name: "shell.overlay", id: "bsk-observation" },
+     ]);
+diff --git a/packages/dsh-plugin-browserskill/tests/profile-selection.test.ts b/packages/dsh-plugin-browserskill/tests/profile-selection.test.ts
+index 2b1fb22..9493710 100644
+--- a/packages/dsh-plugin-browserskill/tests/profile-selection.test.ts
++++ b/packages/dsh-plugin-browserskill/tests/profile-selection.test.ts
+@@ -24,6 +24,7 @@ describe("profile selection through bsk_session", () => {
+       "start",
+       "--request-id",
+       expect.any(String),
++      "--agent-name", "DeepSeek Harness", "--project", "聊天 ersation",
+       "--browser",
+       browser,
+     ]);
+diff --git a/packages/dsh-plugin-browserskill/tests/session-starts.test.ts b/packages/dsh-plugin-browserskill/tests/session-starts.test.ts
+index 66eb572..df832d1 100644
+--- a/packages/dsh-plugin-browserskill/tests/session-starts.test.ts
++++ b/packages/dsh-plugin-browserskill/tests/session-starts.test.ts
+@@ -24,6 +24,7 @@ describe("recoverable plugin starts", () => {
+       return ok({ state: "closed" });
+     });
+     h.registry.completeStart({ sessionId: "working", startedAtMs: 1 });
++    h.registry.trackOwner("working", ["conversation"]);
+     const starting = h.session({
+       action: "start",
+       device: "iphone-14",
+diff --git a/packages/dsh-plugin-browserskill/tests/session-stops.test.ts b/packages/dsh-plugin-browserskill/tests/session-stops.test.ts
+index a8f1388..6135e0a 100644
+--- a/packages/dsh-plugin-browserskill/tests/session-stops.test.ts
++++ b/packages/dsh-plugin-browserskill/tests/session-stops.test.ts
+@@ -175,7 +175,7 @@ describe("managed session stops", () => {
+     for (const requestId of ["first", "second"])
+       journal.records.set(requestId, {
+         requestId,
+-        owners: [],
++        owners: ["conversation"],
+         startedAtMs: 1,
+         cleanup: false,
+         stop: "closed",
+diff --git a/packages/dsh-plugin-browserskill/tests/skill.test.ts b/packages/dsh-plugin-browserskill/tests/skill.test.ts
+index 40b7a8d..33038a0 100644
+--- a/packages/dsh-plugin-browserskill/tests/skill.test.ts
++++ b/packages/dsh-plugin-browserskill/tests/skill.test.ts
+@@ -60,6 +60,7 @@ describe("registerBskSkill", () => {
+     expect([...new Set(references)].sort()).toEqual([
+       "references/cooperation.md",
+       "references/debugging.md",
++      "references/dsh-workflow.md",
+       "references/help-and-recovery.md",
+       "references/interaction-details.md",
+       "references/native-dialogs.md",
+@@ -80,8 +81,8 @@ describe("registerBskSkill", () => {
+     expect(interactions).toContain(
+       "drags with `deltaX`/`deltaY` also require sync's single-use `observationId` receipt",
+     );
+-    expect(content).toMatch(/Never omit\s+`browser` or substitute another instance/);
+-    expect(content).toContain("[visual:screenshot]");
++    expect(content).toMatch(/Never omit or substitute\s+the required browser/);
++    expect(content).toContain("Screenshots/Canvas");
+     expect(content).toContain("nextCursor");
+     expect(skill.source).toBe("bundled");
+     // Source frontmatter is registration metadata and must not leak into the body.
+diff --git a/packages/dsh-plugin-browserskill/tests/tools.test.ts b/packages/dsh-plugin-browserskill/tests/tools.test.ts
+index 604e88e..a3886f2 100644
+--- a/packages/dsh-plugin-browserskill/tests/tools.test.ts
++++ b/packages/dsh-plugin-browserskill/tests/tools.test.ts
+@@ -2,7 +2,7 @@ import type { ChildProcess } from "node:child_process";
+ import { EventEmitter } from "node:events";
+ import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+ import { tmpdir } from "node:os";
+-import { join } from "node:path";
++import { join, resolve } from "node:path";
+ import type { ToolDefinition, ToolRunContext } from "@deepseek-ai/dsh-tools";
+ import { describe, expect, it, vi } from "vitest";
+ import { registerBrowserTools } from "../src/browser-tools";
+@@ -420,7 +420,7 @@ it.each(["wait", "status"])("does not negotiate policy through %s", async (actio
+ });
+ 
+ const EXPECTED_ACTIONS = {
+-  bsk_session: ["start", "stop", "list", "share", "sync", "wait-user", "cooperation-status"],
++  bsk_session: ["start", "finish", "stop", "list", "share", "sync", "wait-user", "cooperation-status"],
+   bsk_page: ["navigate", "back", "forward", "reload", "wait", "wait-for-element"],
+   bsk_inspect: [
+     "observe",
+@@ -564,7 +564,7 @@ describe("gesture and saved observation actions", () => {
+       params: '{"ref":"e1"}',
+       untilVisible: "#ready",
+       waitTimeoutMs: 5000,
+-      saveFull: "/tmp/after.json",
++      saveFull: resolve("/tmp/after.json"),
+       contextId: "ctx-before",
+       dependsOn: ["@e1"],
+     };
+@@ -587,7 +587,7 @@ describe("gesture and saved observation actions", () => {
+         "--until-visible",
+         "#ready",
+         "--save-full",
+-        "/tmp/after.json",
++        resolve("/tmp/after.json"),
+         "--context",
+         "ctx-before",
+       ]),
+@@ -725,8 +725,8 @@ describe("gesture and saved observation actions", () => {
+     await startSession(tools);
+     await tools.get("session.cooperate.sync")!.execute(
+       {
+-        saveFull: "/tmp/new.json",
+-        baseline: "/tmp/old.json",
++        saveFull: resolve("/tmp/new.json"),
++        baseline: resolve("/tmp/old.json"),
+         matchText: ["item 20", "Buy"],
+         contextLines: 0,
+         settle: true,
+@@ -738,9 +738,9 @@ describe("gesture and saved observation actions", () => {
+     expect(command).toEqual(
+       expect.arrayContaining([
+         "--save-full",
+-        "/tmp/new.json",
++        resolve("/tmp/new.json"),
+         "--baseline",
+-        "/tmp/old.json",
++        resolve("/tmp/old.json"),
+         "--settle",
+         "--context-lines",
+         "0",
+@@ -813,9 +813,9 @@ describe("gesture and saved observation actions", () => {
+     "--session=foreign",
+   ])("preserves option-like find literal %s in an offline view", async (find) => {
+     const { tools, calls } = setup({ view: { historical: true } });
+-    await tools.get("inspect.view")!.execute({ file: "/tmp/saved.json", find }, makeExec());
++    await tools.get("inspect.view")!.execute({ file: resolve("/tmp/saved.json"), find }, makeExec());
+     expect(calls).toHaveLength(1);
+-    expect(calls[0].args).toEqual(["view", "/tmp/saved.json", `--find=${find}`]);
++    expect(calls[0].args).toEqual(["view", resolve("/tmp/saved.json"), `--find=${find}`]);
+     expect(calls[0].options.tag).toBeUndefined();
+   });
+ 
+@@ -824,13 +824,13 @@ describe("gesture and saved observation actions", () => {
+     const { tools, calls } = setup({ view: reply });
+     const result = await tools
+       .get("inspect.view")!
+-      .execute({ file: "/tmp/saved.json", find: "Buy", startLine: 2, lineCount: 10 }, makeExec());
++      .execute({ file: resolve("/tmp/saved.json"), find: "Buy", startLine: 2, lineCount: 10 }, makeExec());
+     expect(result).toEqual(reply);
+     expect(calls).toHaveLength(1);
+     expect(calls[0].args).toEqual(
+       expect.arrayContaining([
+         "view",
+-        "/tmp/saved.json",
++        resolve("/tmp/saved.json"),
+         "--find=Buy",
+         "--start-line",
+         "2",
+@@ -852,7 +852,7 @@ describe("gesture and saved observation actions", () => {
+   ])("does not treat a historical view as live authority: %j", async (args) => {
+     const { tools, calls } = setup({});
+     await expect(
+-      tools.get("inspect.view")!.execute({ file: "/tmp/saved.json", ...args }, makeExec()),
++      tools.get("inspect.view")!.execute({ file: resolve("/tmp/saved.json"), ...args }, makeExec()),
+     ).rejects.toThrow();
+     expect(calls).toHaveLength(0);
+   });
+@@ -2941,7 +2941,7 @@ describe("structured extraction", () => {
+     ]);
+   });
+   it("routes discovered targets and CSV receipts through the existing tool", async () => {
+-    const receipt = { path: "/tmp/results.csv", metadata_path: "/tmp/results.csv.meta.json" };
++    const receipt = { path: resolve("/tmp/results.csv"), metadata_path: resolve("/tmp/results.csv.meta.json") };
+     const { tools, calls } = setup({
+       "session start": START_REPLY("s1"),
+       "extract table": receipt,
+@@ -2954,7 +2954,7 @@ describe("structured extraction", () => {
+           extractKind: "table",
+           extractTarget: "xt_fixture",
+           extractFormat: "csv",
+-          output: "/tmp/results.csv",
++          output: resolve("/tmp/results.csv"),
+           csvSafe: true,
+         },
+         makeExec(),
+@@ -2970,7 +2970,7 @@ describe("structured extraction", () => {
+       "--format",
+       "csv",
+       "--out",
+-      "/tmp/results.csv",
++      resolve("/tmp/results.csv"),
+       "--csv-safe",
+     ]);
+   });
+@@ -2993,7 +2993,7 @@ describe("structured extraction", () => {
+       "262144",
+     ]);
+     await inspect.execute(
+-      { action: "extract", extractKind: "table", selector: "#t", output: "/tmp/t.json" },
++      { action: "extract", extractKind: "table", selector: "#t", output: resolve("/tmp/t.json") },
+       makeExec(),
+     );
+     expect(calls.at(-1)?.args).not.toContain("--max-bytes");
+@@ -3205,7 +3205,7 @@ describe("script and file actions share the existing runtime", () => {
+       action: "upload",
+       args: {
+         target: "#drop",
+-        files: ["/tmp/one file.bin", "/tmp/$(literal).bin"],
++        files: [resolve("/tmp/one file.bin"), resolve("/tmp/$(literal).bin")],
+         mode: "drop",
+         timeoutMs: 6000,
+       },
+@@ -3217,9 +3217,9 @@ describe("script and file actions share the existing runtime", () => {
+         "--tab-id",
+         "7",
+         "--file",
+-        "/tmp/one file.bin",
++        resolve("/tmp/one file.bin"),
+         "--file",
+-        "/tmp/$(literal).bin",
++        resolve("/tmp/$(literal).bin"),
+         "--mode",
+         "drop",
+         "--timeout",
+@@ -3230,7 +3230,7 @@ describe("script and file actions share the existing runtime", () => {
+       action: "download",
+       args: {
+         target: "#download",
+-        output: "/tmp/local result.bin",
++        output: resolve("/tmp/local result.bin"),
+         overwrite: true,
+         timeoutMs: 6000,
+       },
+@@ -3240,7 +3240,7 @@ describe("script and file actions share the existing runtime", () => {
+         "--session",
+         "s1",
+         "--out",
+-        "/tmp/local result.bin",
++        resolve("/tmp/local result.bin"),
+         "--tab-id",
+         "7",
+         "--overwrite",
+@@ -3271,8 +3271,8 @@ describe("script and file actions share the existing runtime", () => {
+   });
+   it.each([
+     { action: "evaluate", expression: "1+1" },
+-    { action: "upload", target: "#file", files: ["/tmp/input.bin"] },
+-    { action: "download", target: "#file", output: "/tmp/result.bin" },
++    { action: "upload", target: "#file", files: [resolve("/tmp/input.bin")] },
++    { action: "download", target: "#file", output: resolve("/tmp/result.bin") },
+   ])("rejects an unowned session before invoking $action", async (args) => {
+     const { tools, calls } = setup({});
+     await expect(
+diff --git a/packages/dsh-plugin-browserskill/tsconfig.json b/packages/dsh-plugin-browserskill/tsconfig.json
+index a9ec8ab..a37e397 100644
+--- a/packages/dsh-plugin-browserskill/tsconfig.json
++++ b/packages/dsh-plugin-browserskill/tsconfig.json
+@@ -1,5 +1,6 @@
+ {
+   "compilerOptions": {
++    "allowJs": true,
+     "target": "ES2022",
+     "module": "ESNext",
+     "moduleResolution": "Bundler",

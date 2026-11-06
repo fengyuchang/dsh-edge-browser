@@ -1,7 +1,8 @@
 // Runs inside the existing Harness client plugin factory; no second browser controller.
 // Conversation titles follow dsh-doyourweb's MIT design; see LICENSE.dsh-doyourweb.txt.
 // This bridge supplies display labels only. The server routes by browser ownership.
-function dshRegisterAnnotationClient(ctx) {
+import * as react from 'react';
+export function dshRegisterAnnotationClient(ctx) {
   const clientId = crypto.randomUUID();
   let revision = 0;
   const publish = async (targetId, active) => {

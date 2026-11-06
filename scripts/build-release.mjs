@@ -9,8 +9,8 @@ const source = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('Build the offline Windows package on Windows x64. Source checks work on other platforms.');
 const option = name => { const i = process.argv.indexOf(name); return i < 0 ? undefined : process.argv[i + 1]; };
 const bsk = path.resolve(option('--bsk') || process.env.BSK_PATH || 'bin/bsk.exe');
-if (!fs.existsSync(bsk)) throw new Error('Pass --bsk with the installed BrowserSkill 0.3.3 executable.');
-if (!/\b0\.3\.3\b/.test(execFileSync(bsk, ['--version'], { encoding: 'utf8', windowsHide: true }))) throw new Error('This release requires BrowserSkill CLI 0.3.3.');
+if (!fs.existsSync(bsk)) throw new Error('Pass --bsk with the verified BrowserSkill 0.4.2 executable.');
+if (!/\b0\.4\.2\b/.test(execFileSync(bsk, ['--version'], { encoding: 'utf8', windowsHide: true }))) throw new Error('This release requires BrowserSkill CLI 0.4.2.');
 const output = path.resolve(source, option('--out') || 'dist/windows-x64');
 if (output === source || source.startsWith(output + path.sep) || fs.existsSync(output)) throw new Error('Use a new output directory, outside the source root itself. Existing releases are never overwritten.');
 fs.mkdirSync(output, { recursive: true });
@@ -25,7 +25,7 @@ function copy(from, to) {
     }
   } else { fs.mkdirSync(path.dirname(to), { recursive: true }); fs.copyFileSync(from, to); }
 }
-for (const name of ['extension', 'extension-official', 'harness', 'provenance.json', 'verify.mjs', 'annotation-check.mjs', 'annotation-client-check.mjs', 'notice-check.mjs', 'task-finish-check.mjs', 'task-finish-live-check.mjs', 'annotation-ui-check.mjs', 'annotation-scope-live-check.mjs']) copy(path.join(source, name), path.join(output, name));
+for (const name of ['extension', 'extension-official', 'harness', 'source', 'source-build.json', 'scripts', 'provenance.json', 'verify.mjs', 'preview-check.mjs', 'annotation-check.mjs', 'annotation-client-check.mjs', 'notice-check.mjs', 'task-finish-check.mjs', 'task-finish-live-check.mjs', 'annotation-ui-check.mjs', 'annotation-scope-live-check.mjs']) copy(path.join(source, name), path.join(output, name));
 copy(bsk, path.join(output, 'bin/bsk.exe'));
 copy(process.execPath, path.join(output, 'runtime/node.exe'));
 copy(path.join(source, 'licenses'), path.join(output, 'LICENSES'));
@@ -38,7 +38,7 @@ for (const name of fs.readdirSync(path.join(source, 'migration'))) {
 }
 
 const provenance = JSON.parse(fs.readFileSync(path.join(source, 'provenance.json')));
-const cache = path.join(source, '.cache/BrowserSkill-official-0.3.3.zip');
+const cache = path.join(source, '.cache/BrowserSkill-official-0.4.2.zip');
 fs.mkdirSync(path.dirname(cache), { recursive: true });
 if (!fs.existsSync(cache)) {
   const response = await fetch(provenance.archiveUrl, { signal: AbortSignal.timeout(120000) });
@@ -47,7 +47,7 @@ if (!fs.existsSync(cache)) {
 }
 const digest = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 if (digest(cache) !== provenance.archiveSha256) throw new Error('Upstream archive checksum mismatch.');
-copy(cache, path.join(output, 'BrowserSkill-official-0.3.3.zip'));
+copy(cache, path.join(output, 'BrowserSkill-official-0.4.2.zip'));
 
 function locate(name, from) {
   const req = createRequire(path.join(from, 'package.json'));

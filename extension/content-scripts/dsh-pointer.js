@@ -1,4 +1,5 @@
 (() => {
+  if (!globalThis.chrome?.runtime?.onMessage) return;
   if (globalThis.__dshPointerInstalled) return;
   globalThis.__dshPointerInstalled = true;
   let host, shadow, arrow, trails, panel, panelLabel, panelDetail, focusRing, scan, scrollGlow;
@@ -91,6 +92,7 @@
     refreshVisibility();
   };
   globalThis.dshRefreshActivity = renderActivity;
+  globalThis.dshSetControlState = state => { paused = state.active !== true; refreshVisibility(); };
   globalThis.dshRaisePointer = () => { if (host?.isConnected && document.documentElement.lastElementChild !== host) document.documentElement.append(host); };
   const flashScroll = direction => {
     if (!scrollGlow || paused || hintsHidden || document.hidden) return;
@@ -231,7 +233,7 @@
     if (message.type === 'dsh-visual-reset') { previous = undefined; activity = undefined; edgePoint = undefined; highlight(null); if (scan) scan.style.display = 'none'; renderActivity(); hide(); return; }
     if (message.type === 'dsh-automation-pointer-hide') { previous = undefined; edgePoint = undefined; hide(); return; }
     if (message.type === 'bh-agent-overlay-state') {
-      paused = message.mode !== 'control'; refreshVisibility();
+      paused = message.mode !== 'control' || ['human', 'held', 'yielding', 'unavailable'].includes(message.cooperation?.mode); refreshVisibility();
     }
     if (message.type === 'bsk-help-request' || message.type === 'bh-agent-overlay-reset') { paused = true; hide(); }
     if (message.type === 'bsk/capture-suppress') { captureHidden = message.phase === 'begin' ? captureHidden + 1 : Math.max(0, captureHidden - 1); refreshVisibility(); }

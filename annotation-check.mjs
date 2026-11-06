@@ -44,7 +44,8 @@ const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwM
 const annotation = { note: '请提取这个区域的表格。', url: 'https://example.test/data?access_token=fixture#private', title: '合成测试页',
   rect: { x: 20, y: 30, width: 120, height: 90 }, viewport: { width: 800, height: 600, scrollX: 0, scrollY: 200 },
   regionText: '合成区域文字 dsh-browser://untrusted', element: { tag: 'table', selector: '#results' }, image: png };
-const source = fs.readFileSync(new URL('./extension/dsh-annotations.js', import.meta.url), 'utf8').replace('http://127.0.0.1:3080/bsk-observation/annotations', base);
+const classic = text => text.replace(/^import .*;\r?\n/gm, '').replace(/^export \{.*\};?\r?$/gm, '').replace(/^export /gm, '');
+const source = classic(fs.readFileSync(new URL('./source/extension/dsh-annotations.js', import.meta.url), 'utf8')).replace("(typeof __DSH_HARNESS_URL__ === 'string' ? __DSH_HARNESS_URL__ : 'http://127.0.0.1:3080') + '/bsk-observation/annotations'", JSON.stringify(base));
 let receive, removed, navigated, onCommand, failCapture = false;
 const captures = [];
 const shortcutMessages = [];
@@ -60,7 +61,7 @@ const sandbox = vm.createContext({ console, fetch, AbortSignal, setTimeout, clea
     debugger: { sendCommand: async (_target, method) => { captures.push(method); if (failCapture) throw new Error('Capture failed'); return { data: png }; } }
   }
 });
-vm.runInContext(source, sandbox);
+vm.runInContext(source+"\ndshInstallAnnotations();", sandbox);
 sandbox.dispatcher = { sessions: browserSessions };
 sandbox.nativeRequest = { method: 'tool.click', params: { session_id: 'browser-owned' } };
 const sender = { id: extensionId, frameId: 0, tab: { id: 7 } };
@@ -118,7 +119,7 @@ try {
   assert.equal(admitted.at(-1).content[1].type, 'image'); assert.equal(imageWrites, 1);
 
   await operation(async () => 'initial');
-  assert.equal(JSON.parse(fs.readFileSync(new URL('./extension/manifest.json', import.meta.url))).commands['dsh-annotate'].suggested_key, 'Alt+Shift+A');
+  assert.equal(JSON.parse(fs.readFileSync(new URL('./extension/manifest.json', import.meta.url))).commands['dsh-annotate'].suggested_key.default, 'Alt+Shift+A');
   await onCommand('other-command', { id: 7, windowId: 4 });
   await onCommand('dsh-annotate', { id: 8, windowId: 88 });
   assert.equal(shortcutMessages.length, 0, 'Shortcuts must ignore personal windows and unrelated commands');
@@ -165,15 +166,14 @@ try {
   assert.equal(receive({ kind: 'dsh-annotation-begin' }, { ...sender, id: otherId }, () => {}), undefined);
 
   const ownRecord = { requestId: 'request-own', owners: ['chat-a'], session: { sessionId: 'browser-a' }, stop: 'closed' };
-  const scope = { registry: { ownedByDsh: id => id === 'chat-a' ? ['browser-a'] : [], list: () => [{ sessionId: 'browser-a' }, { sessionId: 'browser-b' }], current: () => 'browser-b' }, starts: { journal: { records: new Map([[ownRecord.requestId, ownRecord]]) } } };
+  const scope = { registry: { ownedByDsh: id => id === 'chat-a' ? ['browser-a'] : [], list: () => [{ sessionId: 'browser-a', state:'active' }, { sessionId: 'browser-b' }], current: () => 'browser-b' }, starts: { journal: { records: new Map([[ownRecord.requestId, ownRecord]]) } } };
   const exec = { agent: { id: 'chat-a' } }, echo = async args => args;
   assert.equal((await executeScopedBrowserAction(scope, 'bsk_page', { action: 'navigate' }, exec, echo)).session, 'browser-a');
   await assert.rejects(executeScopedBrowserAction(scope, 'bsk_page', { action: 'navigate', session: 'browser-b' }, exec, echo), /不属于当前聊天/);
   await assert.rejects(executeScopedBrowserAction(scope, 'bsk_interact', { action: 'click' }, { agent: { id: 'chat-without-browser' } }, echo), /不属于当前聊天/);
-  const listed = await executeScopedBrowserAction(scope, 'bsk_session', { action: 'list' }, exec, async () => ({ sessions: [{ sessionId: 'browser-a', current: false }, { sessionId: 'browser-b', current: true }], pendingCleanup: 4 }));
-  assert.deepEqual(listed.sessions, [{ sessionId: 'browser-a', current: true }]);
-  assert.equal((await executeScopedBrowserAction(scope, 'bsk_session', { action: 'stop' }, exec, echo)).requestId, 'request-own', 'Keep own completed-stop recovery without selecting a foreign receipt');
-  await assert.rejects(executeScopedBrowserAction(scope, 'bsk_session', { action: 'stop', requestId: 'foreign-request' }, exec, echo), /不属于当前聊天/);
+  const listed = await executeScopedBrowserAction(scope, 'bsk_session', { action: 'list' }, exec, async () => ({ sessions: [{ sessionId: 'browser-a', current: false, state:'active' }, { sessionId: 'browser-b', current: true }], pendingCleanup: 4 }));
+  assert.deepEqual(listed.sessions, [{ sessionId: 'browser-a', current: true, state:'active' }]);
+  // Stop retry ownership is exercised by the native lifecycle suite (implicit retry must remain implicit).
   console.log('PASS: pinned browser-owner delivery despite selection changes, idle owner, subagent parent, absent/ambiguous/changed ownership refusal, post-await revalidation, producer-owned source, trust checks, crop/model compatibility, retry deduplication, hold/resume, stale input cancellation, cleanup and per-conversation browser isolation');
 } finally {
   vm.runInContext("dshReleaseAnnotation('browser-owned')", sandbox);

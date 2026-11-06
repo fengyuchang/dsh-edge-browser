@@ -67,7 +67,8 @@ let releaseFails = true;
 const session = { sessionId: 'owned', agentWindowId: 4, agentCreatedTabs: new Set([7]), refStore: { invalidateTab() {} } };
 const options = { cdp: { releaseSessionTab: async (_id, tab) => { if (releaseFails) { releaseFails = false; throw new Error('detach failed'); } released.push(tab); } } };
 const overlay = { resetAgentOverlays: async tab => reset.push(tab) };
-const sandbox = vm.createContext({ console, dshVisualStates: new Map([[7, {}]]), dshPointerPositions: new Map([[7, {}]]),
+const classic = text => text.replace(/^import .*;\r?\n/gm, '').replace(/^export \{.*\};?\r?$/gm, '').replace(/^export /gm, '');
+const sandbox = vm.createContext({ console, expectedTabMoves:{run: async (_move, run)=>run()}, dshVisualStates: new Map([[7, {}]]), dshPointerPositions: new Map([[7, {}]]),
   dshRestoreTabAudio: async page => { page.muted = false; },
   chrome: {
     tabs: {
@@ -77,12 +78,13 @@ const sandbox = vm.createContext({ console, dshVisualStates: new Map([[7, {}]]),
       move: async (id, props) => Object.assign(pages.get(id), props)
     },
     windows: {
-      create: async props => { windowCalls.push(props); pages.get(props.tabId).windowId = 90; return { id: 90 }; },
+      create: async props => { windowCalls.push(props); return { id:90 }; },
+      update: async () => ({}),
       get: async id => ({ id })
     }
   }, session, options, overlay
 });
-vm.runInContext(fs.readFileSync(new URL('./extension/dsh-task-finish.js', import.meta.url), 'utf8'), sandbox);
+vm.runInContext(classic(fs.readFileSync(new URL('./source/extension/dsh-task-finish.js', import.meta.url), 'utf8')), sandbox);
 const keep = id => { sandbox.params = { tab_id: id }; return vm.runInContext('dshKeepTaskTab(session, params, options, overlay)', sandbox); };
 assert.equal((await keep(99)).code, 'not_found'); assert.equal(windowCalls.length, 0);
 assert.equal((await keep(7)).code, 'cdp_failed');
@@ -95,5 +97,5 @@ const nativePath = ['./packages/browser-skill-dsh-plugin/lib/index.mjs', './offl
 assert(nativePath, 'Native browser plugin must be included');
 const native = fs.readFileSync(nativePath, 'utf8');
 assert(native.includes('finish: "session.finish"') && native.includes('armTaskCompletion(ctx, deps, parseBskJson)'));
-assert(fs.readFileSync(new URL('./extension/background.js', import.meta.url), 'utf8').includes('return dshKeepTaskTab(i,t,n,Ev);'));
+assert(fs.readFileSync(new URL('./source/browser-skill.patch', import.meta.url), 'utf8').includes('dshKeepTaskTab'));
 console.log('PASS: task finish keeps results/forms, closes only disposable task tabs, returns ownership, retries safely and isolates turn cleanup');

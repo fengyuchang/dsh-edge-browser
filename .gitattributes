@@ -10,3 +10,11 @@
 *.cmd text eol=crlf
 *.png binary
 licenses/*.txt -whitespace
+# These files are recorded byte-for-byte in source-build.json.
+extension/** -text -whitespace
+source/** -text whitespace=cr-at-eol
+source/*.patch -whitespace
+harness/** -text whitespace=cr-at-eol
+packages/browser-skill-dsh-plugin/** -text -whitespace
+scripts/build-source.mjs -text
+source-build.json -text

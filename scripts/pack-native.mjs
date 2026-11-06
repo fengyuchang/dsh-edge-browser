@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+const root=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const out=path.resolve(process.argv[2]??path.join(root,'dist/browser-skill-dsh-plugin-0.4.2-dsh.1.tgz'));
+const stage=path.join(root,'.cache/native-package-0.4.2-dsh.1');
+fs.mkdirSync(stage,{recursive:true});fs.mkdirSync(path.dirname(out),{recursive:true});
+fs.cpSync(path.join(root,'packages/browser-skill-dsh-plugin'),path.join(stage,'package'),{recursive:true,filter:p=>path.basename(p)!=='node_modules'});
+execFileSync('tar',['-czf',out,'-C',stage,'package'],{windowsHide:true});
+fs.writeFileSync(out+'.sha256',createHash('sha256').update(fs.readFileSync(out)).digest('hex')+'  '+path.basename(out)+'\n');
+console.log(out);

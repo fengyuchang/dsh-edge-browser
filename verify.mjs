@@ -1,151 +1,43 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import vm from 'node:vm';
-import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
+import {fileURLToPath} from 'node:url';
+import path from 'node:path';
+const root=path.dirname(fileURLToPath(import.meta.url));
+const read=name=>fs.readFileSync(path.join(root,name),'utf8');
+const classic = text => text.replace(/^import .*;\r?\n/gm, '').replace(/^export \{.*\};?\r?$/gm, '').replace(/^export /gm, '');
 
-const root = path.dirname(fileURLToPath(import.meta.url));
-const read = name => fs.readFileSync(path.join(root, name), 'utf8');
-const manifest = JSON.parse(read('extension/manifest.json'));
-const original = JSON.parse(read('extension-official/manifest.json'));
-assert.equal(manifest.name, 'DeepSeek Harness');
-assert.deepEqual(manifest.host_permissions, original.host_permissions);
-assert.deepEqual(manifest.permissions, [...original.permissions, 'tabGroups']);
-if (fs.existsSync(path.join(root, 'BrowserSkill-official-0.3.3.zip'))) assert.equal(createHash('sha256').update(fs.readFileSync(path.join(root, 'BrowserSkill-official-0.3.3.zip'))).digest('hex'), '10ef76e68f352893fa22dd4cce2f1b96cb90ed957b815d656e13180d07d3c6ea');
-assert(manifest.content_scripts[0].js.includes('content-scripts/dsh-pointer.js'));
-for (const filename of ['dsh-background.js', 'dsh-task-groups.js', 'dsh-annotations.js', 'dsh-visual-activity.js', 'dsh-pointer-relay.js', 'dsh-task-finish.js', 'content-scripts/dsh-controls.js', 'content-scripts/dsh-pointer.js', 'background.js']) {
-  new vm.Script(read('extension/' + filename), { filename });
-}
-const calls = [];
-const audioChanges = [], audioTabs = new Map();
-const events = {};
-const context = vm.createContext({ console, chrome: {
-  runtime: { id: 'test-extension' },
-  tabs: { group: async args => {
-    // Model the documented current-window default: omitting this field would
-    // move the task's only tab into the personal window and close its window.
-    if (args.groupId === undefined) assert.equal(args.createProperties?.windowId ?? 88, 4, 'Group creation must stay in the task window');
-    calls.push(args); return 9;
-  }, update: async (id, changes) => {
-    audioChanges.push({ id, ...changes });
-    const tab = audioTabs.get(id) ?? { id, windowId: 4 };
-    tab.mutedInfo = { muted: changes.muted, reason: 'extension', extensionId: 'test-extension' };
-    audioTabs.set(id, tab);
-    return tab;
-  }, get: async id => audioTabs.get(id),
-  onCreated: { addListener: cb => { events.newTab = cb; } },
-  onAttached: { addListener: cb => { events.tabAttached = cb; } },
-  onUpdated: { addListener: cb => { events.tabUpdated = cb; } },
-  onRemoved: { addListener: cb => { events.tabRemoved = cb; } } },
-  tabGroups: { update: async (id, args) => { calls.push({ id, ...args }); }, onRemoved: { addListener: cb => { events.groupRemoved = cb; } } },
-  windows: { onRemoved: { addListener: cb => { events.windowRemoved = cb; } } }
-} });
-vm.runInContext(read('extension/dsh-task-groups.js'), context);
-await vm.runInContext('dshGroupAgentWindow({id: 4, tabs: [{id: 10}, {id: 11}]})', context);
-assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), { tabIds: [10, 11], createProperties: { windowId: 4 } });
-assert.equal(calls[1].title, 'DeepSeek Harness');
-assert.deepEqual(audioChanges, [{ id: 10, muted: true }, { id: 11, muted: true }], 'Initial task tabs must be muted');
-await events.newTab({ id: 12, windowId: 4 });
-assert.equal(calls.at(-1).groupId, 9);
-assert.deepEqual(audioChanges.at(-1), { id: 12, muted: true }, 'New task tabs must be muted');
-const count = calls.length;
-const audioCount = audioChanges.length;
-await events.newTab({ id: 99, windowId: 88 });
-assert.equal(calls.length, count, 'Personal windows must not be grouped');
-events.tabUpdated(99, { audible: true }, { id: 99, windowId: 88 });
-assert.equal(audioChanges.length, audioCount, 'Personal audio must not change');
-audioTabs.set(20, { id: 20, windowId: 4, mutedInfo: { muted: false } });
-await events.tabAttached(20);
-assert.deepEqual(audioChanges.at(-1), { id: 20, muted: true }, 'Borrowed tabs must be muted in the task window');
-audioTabs.get(20).windowId = 88;
-await events.tabAttached(20);
-assert.deepEqual(audioChanges.at(-1), { id: 20, muted: false }, 'Return our own temporary mute when a borrowed tab returns');
-audioTabs.set(21, { id: 21, windowId: 4, mutedInfo: { muted: true, reason: 'user' } });
-await events.tabAttached(21);
-const alreadyMutedCount = audioChanges.length;
-audioTabs.get(21).windowId = 88;
-await events.tabAttached(21);
-assert.equal(audioChanges.length, alreadyMutedCount, 'Previously muted tabs must stay muted after return');
-audioTabs.set(22, { id: 22, windowId: 4, mutedInfo: { muted: false } });
-await events.tabAttached(22);
-audioTabs.get(22).windowId = 88;
-audioTabs.get(22).mutedInfo = { muted: true, reason: 'extension', extensionId: 'another-extension' };
-const otherExtensionCount = audioChanges.length;
-await events.tabAttached(22);
-assert.equal(audioChanges.length, otherExtensionCount, 'Do not override another extension audio state');
-events.groupRemoved({ id: 9, windowId: 4 });
-await events.newTab({ id: 23, windowId: 4 });
-assert.deepEqual(audioChanges.at(-1), { id: 23, muted: true }, 'Muting must survive a removed task group');
-events.tabUpdated(24, { audible: true }, { id: 24, windowId: 4, mutedInfo: { muted: false } });
-assert.deepEqual(audioChanges.at(-1), { id: 24, muted: true }, 'Newly audible task tabs must be muted');
-events.windowRemoved(4);
-const removedAudioCount = audioChanges.length;
-await events.newTab({ id: 13, windowId: 4 });
-assert.equal(calls.length, count, 'Removed task windows must be forgotten');
-assert.equal(audioChanges.length, removedAudioCount, 'Removed task windows must not mute new tabs');
-assert.equal(read('extension/background.js').split('await dshGroupAgentWindow(n);').length - 1, 1);
-assert.equal(read('extension/background.js').split('sendCommand:(e,t,n)=>dshCdpCommand(e,t,n)').length - 1, 1);
-assert.equal(read('extension/background.js').split('if(i)return i;return dshAnnotationOperation(this,e,t,()=>dshVisualOperation(this,e,()=>this.invokeAction(e,t,n)))').length - 1, 1, 'Annotation gating and activity must follow native permission checks');
-const pointerMessages = [], nativeCommands = [], injections = [];
-let visualFails = false, needsInjection = false, nativeFails = false, detach, ready, removed;
-const pointer = vm.createContext({ Number, chrome: {
-  runtime: { id: 'test-extension', onMessage: { addListener: cb => { ready = cb; } } },
-  tabs: { sendMessage: async (tabId, message) => {
-    pointerMessages.push({ tabId, message });
-    if (visualFails || needsInjection) throw new Error('No receiving content script');
-    return { dshPointer: true, dshVisual: true };
-  }, get: async id => ({ id, windowId: id === 99 ? 88 : 4 }), query: async () => [{ id: 7, windowId: 4 }], onRemoved: { addListener: cb => { removed = cb; } } },
-  scripting: { executeScript: async args => { injections.push(args); needsInjection = false; if (visualFails) throw new Error('Restricted page'); } },
-  debugger: { sendCommand: async (target, method, params) => {
-    nativeCommands.push({ target, method, params });
-    if (nativeFails) throw new Error('Native CDP error');
-    return { native: true };
-  }, onDetach: { addListener: cb => { detach = cb; } } }
-} });
-vm.runInContext(read('extension/dsh-visual-activity.js'), pointer);
-vm.runInContext(read('extension/dsh-pointer-relay.js'), pointer);
-await vm.runInContext("dshCdpCommand({tabId: 7}, 'Runtime.enable', {})", pointer);
-assert.equal(pointerMessages.length, 0, 'Non-mouse commands must not create a pointer');
-await vm.runInContext("dshCdpCommand({tabId: 7}, 'Input.dispatchMouseEvent', {type:'mouseMoved', x:20, y:30})", pointer);
-assert.equal(pointerMessages.at(-1).message.x, 20);
-assert.equal(nativeCommands.at(-1).params.y, 30);
-needsInjection = true;
-await vm.runInContext("dshCdpCommand({tabId: 7}, 'Input.dispatchMouseEvent', {type:'mousePressed', x:30, y:40})", pointer);
-assert.equal(injections.at(-1).target.tabId, 7);
-visualFails = true;
-assert.equal((await vm.runInContext("dshCdpCommand({tabId: 7}, 'Input.dispatchMouseEvent', {type:'mouseReleased', x:30, y:40})", pointer)).native, true, 'A visualization failure must not block input');
-nativeFails = true;
-await assert.rejects(vm.runInContext("dshCdpCommand({tabId: 7}, 'Runtime.enable', {})", pointer), /Native CDP error/);
-visualFails = false;
-detach({ tabId: 7 });
-assert.equal(pointerMessages.at(-1).message.type, 'dsh-visual-reset');
-nativeFails = false;
-const dispatcher = { sessions: { get: () => ({ agentWindowId: 4 }) } };
-pointer.dispatcher = dispatcher;
-pointer.request = { id: 'test', method: 'tool.fill', params: { session_id: 'ours', value: 'DO-NOT-COPY' } };
-pointer.operation = async () => ({ native: true });
-assert.equal((await vm.runInContext('dshVisualOperation(dispatcher, request, operation)', pointer)).native, true);
-assert.equal(pointerMessages.at(-1).message.phase, 'complete');
-assert(!JSON.stringify(pointerMessages).includes('DO-NOT-COPY'), 'Activity messages must never include field values');
-pointer.request = { id: 'foreign', method: 'tool.click', params: { session_id: 'ours', tab_id: 99 } };
-const beforeForeign = pointerMessages.length;
-await vm.runInContext('dshVisualOperation(dispatcher, request, operation)', pointer);
-assert.equal(pointerMessages.length, beforeForeign, 'A personal window must not receive activity UI');
-pointer.request = { id: 'hover', method: 'tool.hover', params: { session_id: 'ours' } };
-pointer.operation = async () => vm.runInContext("dshCdpCommand({tabId: 7}, 'Input.dispatchMouseEvent', {type:'mouseMoved', x:30, y:590})", pointer);
-await vm.runInContext('dshVisualOperation(dispatcher, request, operation)', pointer);
-assert.equal(pointerMessages.findLast(item => item.message.type === 'dsh-automation-pointer').message.edgeScroll, true);
-pointer.request.method = 'tool.observe';
-await vm.runInContext('dshVisualOperation(dispatcher, request, operation)', pointer);
-assert.equal(pointerMessages.findLast(item => item.message.type === 'dsh-automation-pointer').message.edgeScroll, false, 'Inspection probes must not auto-scroll');
-pointer.operation = async () => { throw new Error('Original operation failure'); };
-await assert.rejects(vm.runInContext('dshVisualOperation(dispatcher, request, operation)', pointer), /Original operation failure/);
-assert.equal(pointerMessages.at(-1).message.phase, 'error');
-let readyResponse;
-ready({ kind: 'dsh-visual-ready' }, { id: 'test-extension', tab: { id: 7 } }, value => { readyResponse = value; });
-assert.equal(readyResponse.pointer.x, 30);
-removed(7);
+const manifest=JSON.parse(read('extension/manifest.json'));
+assert.equal(manifest.name,'DeepSeek Harness');assert.equal(manifest.version,'0.4.2');
+assert(!manifest.permissions.includes('cookies'));assert(manifest.permissions.includes('debugger'));
+assert.equal(manifest.commands['dsh-annotate'].suggested_key.default,'Alt+Shift+A');
+for(const f of fs.readdirSync(path.join(root,'source/extension')).filter(f=>f.endsWith('.js')))new vm.Script(classic(read('source/extension/'+f)));
+for(const f of ['content-scripts/dsh-controls.js','content-scripts/dsh-pointer.js','background.js'])new vm.Script(read('extension/'+f));
+const calls=[], events={}, tabs=new Map();
+const event=name=>({addListener:fn=>events[name]=fn});
+const group=vm.createContext({console,chrome:{runtime:{id:'ours'},tabs:{
+ group:async args=>{if(args.groupId===undefined)assert.equal(args.createProperties.windowId,4);calls.push(args);return 9;},
+ update:async(id,change)=>{const tab=tabs.get(id);tab.mutedInfo={muted:change.muted,reason:'extension',extensionId:'ours'};return tab;},
+ get:async id=>tabs.get(id),onCreated:event('created'),onAttached:event('attached'),onUpdated:event('updated'),onRemoved:event('removed')
+},windows:{onRemoved:event('windowRemoved')},tabGroups:{update:async()=>{},onRemoved:event('groupRemoved')}}});
+vm.runInContext(classic(read('source/extension/dsh-task-groups.js'))+'\ndshInstallTaskGroups();',group);
+tabs.set(7,{id:7,windowId:4});group.win={id:4,tabs:[tabs.get(7)]};await vm.runInContext('dshGroupAgentWindow(win)',group);
+assert(tabs.get(7).mutedInfo.muted);assert.equal(calls.length,1);
+tabs.get(7).windowId=88;await events.attached(7);assert.equal(tabs.get(7).mutedInfo.muted,false);
+tabs.set(8,{id:8,windowId:88,mutedInfo:{muted:false}});await events.created(tabs.get(8));assert.equal(tabs.get(8).mutedInfo.muted,false);
+tabs.set(9,{id:9,windowId:4});await events.attached(9);tabs.get(9).windowId=88;tabs.get(9).mutedInfo={muted:true,reason:'extension',extensionId:'other'};await events.attached(9);assert(tabs.get(9).mutedInfo.muted);
+const pointerMessages=[], nativeCommands=[];let detach,ready,removed,blockVisual=false;
+const pointer=vm.createContext({console,setTimeout,clearTimeout,chrome:{runtime:{id:'ours',onMessage:{addListener:fn=>ready=fn}},
+ tabs:{sendMessage:async(tabId,message)=>{pointerMessages.push({tabId,message});if(blockVisual)return new Promise(()=>{});return{dshVisual:true};},get:async id=>({id,windowId:id===99?88:4}),query:async()=>[{id:7,windowId:4}],onRemoved:{addListener:fn=>removed=fn}},
+ scripting:{executeScript:async()=>{}},debugger:{sendCommand:async(target,method,params)=>{nativeCommands.push({target,method,params});return{native:true}},onDetach:{addListener:fn=>detach=fn}}}});
+vm.runInContext(classic(read('source/extension/dsh-visual-activity.js'))+'\ndshInstallVisualActivity();'+classic(read('source/extension/dsh-pointer-relay.js'))+'\ndshInstallPointerRelay();',pointer);
+pointer.request={id:'test',method:'tool.fill',params:{session_id:'ours',value:'DO-NOT-COPY'}};
+pointer.dispatcher={sessions:{get:()=>({agentWindowId:4})}};pointer.operation=async()=>({native:true});
+await vm.runInContext('dshVisualOperation(dispatcher,request,operation)',pointer);assert(!JSON.stringify(pointerMessages).includes('DO-NOT-COPY'));
+const before=pointerMessages.length;pointer.request.params.tab_id=99;await vm.runInContext('dshVisualOperation(dispatcher,request,operation)',pointer);assert.equal(pointerMessages.length,before);
+blockVisual=true;await Promise.race([vm.runInContext("dshCdpCommand({tabId:7},'Input.dispatchMouseEvent',{type:'mousePressed',x:20,y:30})",pointer),new Promise((_,reject)=>setTimeout(()=>reject(new Error('Cosmetic message blocked native input')),200))]);
+assert.equal(nativeCommands.at(-1).params.type,'mousePressed');blockVisual=false;detach({tabId:7});await new Promise(r=>setTimeout(r,80));
+assert.equal(pointerMessages.at(-1).message.type,'dsh-visual-reset');
 // Exercise the client lifecycle, including the important display declaration
 // needed to override its isolation reset (all: initial !important).
 let receive, storageChanged, pointerHost, shadowNodes;

@@ -22,12 +22,14 @@
 
 ## 从源码构建
 
-Node.js 24+，Windows x64，安装 BrowserSkill CLI 0.3.3。CLI 获取方法见 [BrowserSkill 官方项目](https://github.com/Tencent/BrowserSkill)。
+Node.js 24+，Windows x64，安装 BrowserSkill CLI 0.4.2。CLI 获取方法见 [BrowserSkill 官方项目](https://github.com/Tencent/BrowserSkill)。
 
 ```powershell
-npm ci --ignore-scripts --legacy-peer-deps
-npm test
-npm run build:release -- --bsk 'E:\tools\bsk.exe'
+pnpm install --frozen-lockfile
+pnpm test
+# 可选：从固定上游重新构建（需要 git + pnpm 10.17）
+pnpm run build:source -- --check
+pnpm run build:release -- --bsk 'E:\tools\bsk.exe'
 ```
 
 输出 `dist/dsh-edge-browser-windows-x64.zip`、扩展 ZIP 和对应 `.sha256` 文件。构建器只复制仓库和 npm 运行依赖，验证固定上游扩展的 SHA-256；不读取个人 Harness 资料。
@@ -41,7 +43,7 @@ npm run build:release -- --bsk 'E:\tools\bsk.exe'
 - 使用仓库的 `extension/`，不要混用其他版本的后台、内容脚本和弹窗文件。
 - 重开 Harness，刷新其聊天界面以加载选择同步；重新加载 Edge 扩展。
 
-默认 Harness HTTP 服务是 **127.0.0.1:3080**，接收地址位于 `extension/dsh-annotations.js`。浏览器连接是 **127.0.0.1:52800**。自定义 Harness 端口时需同步接收地址，浏览器端口在扩展弹窗设置。
+默认 Harness HTTP 服务是 **127.0.0.1:3080**，接收地址位于 `source/extension/dsh-annotations.js`（构建时 `BSK_DSH_HTTP_BASE`）。浏览器连接是 **127.0.0.1:52800**。自定义 Harness 端口时需同步接收地址，浏览器端口在扩展弹窗设置。
 
 ## 日常更新与使用
 
@@ -89,3 +91,16 @@ Alt+Shift+A 打开标注；Enter 发送；Shift+Enter 换行；Esc 取消。组�
 **不想听到网页声音。** 任务页会自动静音，但不会强制开始播放，也不会改变网站播放许可。
 
 **网站需要验证码。** 由智能体请求人工接手，人在同一网页完成后交还控制权。扩展不自动解验证码。
+
+## 0.4.2 大版本升级
+
+扩展、CLI、原生插件必须一起升级，旧 1.3 协议不能与新 1.8 混用。
+
+1. 等所有浏览器任务结束，保存未提交的页面。备份原扩展、CLI、原生插件、配置的 package.json 和 pnpm-lock.yaml。
+2. 使用本版完整包替换浏览器相关文件，保留其他插件和 Harness 核心。原生包应固定为本地 file: 发行目录或 .tgz，避免插件市场恢复成未定制的上游包。
+3. 仅重启浏览器后台服务、重载浏览器原生插件，再在 edge://extensions 重新加载扩展。无法单独重载时再正常重开 Harness。
+4. 确认 CLI/扩展均为 0.4.2、协议 1.8，核对原浏览器实例。重新建立任务，不沿用旧控制上下文。
+
+不要在现有 Harness 配置运行全量依赖升级。`scripts/pack-native.mjs` 生成可固定的原生插件 .tgz；`scripts/pin-browser-package.mjs <配置目录> <tgz>` 只更改 BrowserSkill 的依赖和锁定项，运行前备份配置并确保 yaml 包可从该配置解析。它不安装其他依赖、不修改核心、也不主动重启 Harness。
+
+新版默认后台打开任务，普通任务窗口会最小化。用户主动查看和登录/验证码接手仍可显示页面；保留结果页也不会主动抢前台。

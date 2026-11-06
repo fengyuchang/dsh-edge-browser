@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/Tencent/BrowserSkill.git",
+  "commit": "fbea9e8a191e05971015df13c79b23fc1ceaba14",
+  "tag": "cli-v0.4.2",
+  "cliVersion": "0.4.2",
+  "protocol": "1.8",
+  "cliArchiveSha256": "cc1594e62b4d97ca6c96d33e47f8d1d2b8fa2e2b8b8f6987c5b284ec1c437362"
+}

@@ -1,0 +1,51 @@
+// Pinned upstream source + readable DSH adapters. No modifications of minified output.
+import fs from 'node:fs';
+import path from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+import {createHash} from 'node:crypto';
+const root=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const option=n=>{const i=process.argv.indexOf(n);return i<0?undefined:process.argv[i+1];};
+const pin=JSON.parse(fs.readFileSync(path.join(root,'source/upstream.json')));
+const upstream=path.resolve(option('--upstream')??path.join(root,'.cache/browser-skill-source'));
+const run=(command,args,extra={})=>execFileSync(command,args,{cwd:upstream,stdio:'inherit',windowsHide:true,...extra});
+if(!fs.existsSync(upstream)){fs.mkdirSync(path.dirname(upstream),{recursive:true});execFileSync('git',['clone','--branch',pin.tag,'--depth','1',pin.repository,upstream],{stdio:'inherit',windowsHide:true});}
+const head=execFileSync('git',['rev-parse','HEAD'],{cwd:upstream,encoding:'utf8',windowsHide:true}).trim();
+if(head!==pin.commit)throw new Error('Upstream source must match pinned commit '+pin.commit);
+const patch=path.join(root,'source/browser-skill.patch');
+const accepts=args=>{try{execFileSync('git',args,{cwd:upstream,stdio:'pipe',windowsHide:true});return true;}catch{return false;}};
+if(accepts(['apply','--check',patch]))run('git',['apply',patch]);
+else if(!accepts(['apply','--reverse','--check',patch]))throw new Error('Source differs from this patch; use a fresh clone. No files were reset.');
+const extension=path.join(upstream,'apps/extension'),native=path.join(upstream,'packages/dsh-plugin-browserskill');
+fs.cpSync(path.join(root,'source/extension'),path.join(extension,'src/dsh'),{recursive:true});
+fs.cpSync(path.join(root,'source/content'),path.join(extension,'src/dsh/content'),{recursive:true});
+for(const file of ['dsh-annotations.mjs','dsh-session-scope.mjs','dsh-task-finish.mjs','dsh-preview.mjs','dsh-annotation-client.js'])fs.copyFileSync(path.join(root,'harness',file),path.join(native,'src',file));
+fs.cpSync(path.join(root,'harness/skill'),path.join(native,'skill'),{recursive:true});
+const env={...process.env,BSK_DAEMON_WS_URL:option('--ws')??'ws://127.0.0.1:52800',BSK_DSH_HTTP_BASE:option('--harness')??'http://127.0.0.1:3080'};
+const pnpm=(args)=>process.env.PNPM_JS?run(process.execPath,[process.env.PNPM_JS,...args],{env}):run(process.platform==='win32'?'pnpm.cmd':'pnpm',args,{env,shell:process.platform==='win32'});
+pnpm(['install','--frozen-lockfile',...(process.env.PNPM_STORE?['--store-dir',process.env.PNPM_STORE]:[])]);
+pnpm(['--filter','@browser-skill/extension','build']);
+pnpm(['--filter','@wxg-prc-cpg/browser-skill-dsh-plugin','build']);
+if(process.argv.includes('--check')){
+ pnpm(['--filter','@browser-skill/extension','compile']);
+ pnpm(['--filter','@wxg-prc-cpg/browser-skill-dsh-plugin','typecheck']);
+ for(const pkg of ['@browser-skill/extension','@wxg-prc-cpg/browser-skill-dsh-plugin'])pnpm(['--filter',pkg,'exec','vitest','run','--maxWorkers=2']);
+}
+const output=path.resolve(option('--out')??root);
+fs.mkdirSync(output,{recursive:true});
+fs.cpSync(path.join(extension,'dist/chrome-mv3'),path.join(output,'extension'),{recursive:true});
+fs.mkdirSync(path.join(output,'extension/content-scripts'),{recursive:true});
+fs.cpSync(path.join(root,'source/content'),path.join(output,'extension/content-scripts'),{recursive:true});
+const nativeOutput=path.join(output,'packages/browser-skill-dsh-plugin');
+fs.mkdirSync(nativeOutput,{recursive:true});
+for(const file of ['lib','skill','LICENSE','cordis.patch.yml'])fs.cpSync(path.join(native,file),path.join(nativeOutput,file),{recursive:true});
+const meta=JSON.parse(fs.readFileSync(path.join(native,'package.json')));delete meta.devDependencies;delete meta.scripts;delete meta.publishConfig;meta.private=true;meta.version='0.4.2-dsh.1';
+fs.writeFileSync(path.join(nativeOutput,'package.json'),JSON.stringify(meta,null,2)+'\n');
+for(const file of ['dsh-annotations.mjs','dsh-session-scope.mjs','dsh-task-finish.mjs','dsh-preview.mjs'])fs.copyFileSync(path.join(root,'harness',file),path.join(nativeOutput,'lib',file));
+const digest=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const inputs={},outputs={};
+const collect=(dir)=>{for(const f of fs.readdirSync(path.join(root,dir),{withFileTypes:true})){const rel=dir+'/'+f.name;if(f.isDirectory())collect(rel);else inputs[rel]=digest(path.join(root,rel));}};
+collect('source');collect('harness');inputs['scripts/build-source.mjs']=digest(fileURLToPath(import.meta.url));
+for(const file of ['extension/background.js','extension/content-scripts/content.js','extension/content-scripts/dsh-pointer.js','extension/content-scripts/dsh-controls.js','packages/browser-skill-dsh-plugin/lib/index.mjs','packages/browser-skill-dsh-plugin/lib/client.cjs','packages/browser-skill-dsh-plugin/skill/SKILL.md'])outputs[file]=digest(path.join(output,file));
+fs.writeFileSync(path.join(output,'source-build.json'),JSON.stringify({upstream:pin.commit,version:meta.version,ws:env.BSK_DAEMON_WS_URL,harness:env.BSK_DSH_HTTP_BASE,builtAt:new Date().toISOString(),inputs,outputs},null,2)+'\n');
+console.log('Built pinned extension and native plugin at '+output);

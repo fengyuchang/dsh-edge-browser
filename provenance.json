@@ -1,18 +1,19 @@
 {
   "upstream": "https://github.com/Tencent/BrowserSkill",
-  "release": "ext-v0.3.3",
-  "archiveSha256": "10ef76e68f352893fa22dd4cce2f1b96cb90ed957b815d656e13180d07d3c6ea",
+  "release": "ext-v0.4.2",
+  "archiveSha256": "5360ef01ec8fcd3550215e12c417d8b98814bff0e54d478e6b867d693c1d4d76",
   "modifications": [
     "Extension display name and Chinese control hint",
     "Group agent-created tabs inside the task window",
     "Mute task-window tabs by default, including new and borrowed tabs; undo only this extension's temporary mute when a tab returns to a personal window. Playback and website autoplay policy are unchanged.",
     "Native CDP commands, authentication and page interaction remain handled by BrowserSkill",
     "Persistent pointer with curved gradient comet and particles; action lifecycle UI and target highlight; bounded edge hover scrolling after native permission checks. No input values are copied into visual messages.",
-    "Rectangular annotation with cropped screenshot, visible selected-chat destination, producer-owned v4-compatible source and acknowledged deduplicated delivery; selected Harness input slot publishes the destination; ambiguous or changed selection is refused.",
     "Scope browser tools, listing and stop recovery to the calling conversation; never resolve an omitted session to another chat global current browser.",
     "Independent collapsible step hint and control UI.",
     "Keep pointer and control hosts mounted during native click bypass rerenders; raise them only when their stacking order needs to change.",
-    "Native configurable annotation shortcut (Alt+Shift+A); Enter submits once, Shift+Enter keeps newline, and IME composition/repeat guards prevent unintended sends."
+    "Native configurable annotation shortcut (Alt+Shift+A); Enter submits once, Shift+Enter keeps newline, and IME composition/repeat guards prevent unintended sends.",
+    "Human preview through bounded local IPC, without per-frame CLI/tempfile or capture suppression. Model screenshot keeps its clean-capture path.",
+    "Owner-scoped native lifecycle retry receipts, original-chat annotation routing, step + target contexts and background/minimized task windows."
   ],
   "changedBrandingChunks": 1,
   "visualVersion": "comet-2026-10-29",
@@ -24,5 +25,8 @@
     "license": "MIT",
     "use": "MIT design adaptation for selected-conversation publication and annotation reliability; retained license in harness/LICENSE.dsh-doyourweb.txt and offline native plugin."
   },
-  "archiveUrl": "https://github.com/Tencent/BrowserSkill/releases/download/ext-v0.3.3/browser-skill-extension-v0.3.3-chrome.zip"
+  "archiveUrl": "https://github.com/Tencent/BrowserSkill/releases/download/ext-v0.4.2/browser-skill-extension-v0.4.2-chrome.zip",
+  "upstreamCommit": "fbea9e8a191e05971015df13c79b23fc1ceaba14",
+  "protocol": "1.8",
+  "build": "Pinned source + source/browser-skill.patch + readable source/extension, source/content and harness adapters"
 }

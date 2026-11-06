@@ -1,6 +1,6 @@
+import { ChildProcess, SpawnOptionsWithoutStdio } from "node:child_process";
 import Schema from "@deepseek-ai/schemastery";
 import "@deepseek-ai/dsh-tools";
-import { ChildProcess, SpawnOptionsWithoutStdio } from "node:child_process";
 import { Context } from "@deepseek-ai/cordis";
 //#region src/runner.d.ts
 /** A failed `bsk` invocation (non-zero exit, timeout, or spawn failure). */
@@ -9,11 +9,13 @@ declare class BskError extends Error {
   readonly hint?: string;
   readonly exitCode?: number | null;
   readonly timedOut: boolean;
+  readonly data?: unknown;
   constructor(message: string, options?: {
     code?: string;
     hint?: string;
     exitCode?: number | null;
     timedOut?: boolean;
+    data?: unknown;
   });
 }
 interface BskRunResult {
@@ -34,6 +36,8 @@ interface BskRunOptions {
 /** Minimal spawn signature so tests can substitute a fake child process. */
 type SpawnImpl = (command: string, args: string[], options?: SpawnOptionsWithoutStdio) => ChildProcess;
 interface BskRunner {
+  /** Explicit human-only frames; never used by model-facing screenshot tools. */
+  capturePreview?(sessionId: string, options?: BskRunOptions): Promise<BskRunResult>;
   /** Run `bsk <args...> --json` and collect its output. */
   run(args: string[], options?: BskRunOptions): Promise<BskRunResult>;
   /** Kill every still-running child (used when the plugin unloads). */
@@ -200,11 +204,6 @@ interface SessionObservation {
   /** Summary of the most recent failed action (drives the red status dot). */
   lastError?: string;
   /**
-   * The daemon reports this session as gone (e.g. daemon restart): the strip
-   * greys it out until it is stopped/removed. No more frames are requested.
-   */
-  dead?: boolean;
-  /**
    * The DSH conversations this session belongs to (the starting agent's
    * session plus its seed-lineage ancestors), recorded at start. Scoped
    * surfaces (the native sidebar tab) filter by it; absent means untracked
@@ -245,6 +244,8 @@ declare class ObservationService {
   private thumbnailViewers;
   private readonly captureTimers;
   private readonly captureInFlight;
+  /** Only running thumbnails: shared-control reads must not wait behind actions. */
+  private readonly activeCaptures;
   /** Captures intentionally cancelled to make way for foreground work. */
   private readonly capturePreempted;
   /** Number of queued/running model-facing calls that currently outrank thumbnails. */
@@ -305,6 +306,9 @@ declare class ObservationService {
    * active bsk screenshot; the last release schedules one fresh frame.
    */
   acquireForeground(sessionId: string): () => void;
+  /** Call after acquiring foreground priority, before bypassing the action queue.
+   * Killing the CLI only requests cancellation; wait for its bounded cleanup. */
+  waitForCapture(sessionId: string, signal: AbortSignal): Promise<void>;
   /** Mark an action starting on a session (tool entry instrumentation). */
   beginAction(sessionId: string, action: string): void;
   /**
@@ -353,6 +357,7 @@ declare class ObservationService {
 //#endregion
 //#region src/session-starts.d.ts
 interface StopOptions {
+  ownerId?: string;
   sessionId?: string;
   /** Exact target for recovery, including starts that never returned a session ID. */
   requestId?: string;
@@ -382,7 +387,7 @@ declare class SessionStarts {
   private adopt;
   claim(record: StartRecord, signal: AbortSignal): Promise<void>;
   /** Accept a durable stop; aborting its caller only cancels waiting, never cleanup. */
-  stop({ sessionId, requestId, signal }?: StopOptions): Promise<StopResult>;
+  stop({ sessionId, requestId, signal, ownerId }?: StopOptions): Promise<StopResult>;
   private resolveStop;
   private requestCleanup;
   fail(record: StartRecord): Promise<void>;

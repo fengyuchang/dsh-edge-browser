@@ -19,12 +19,13 @@ const sourceSkill = fs.readFileSync(path.join(nativeRoot, 'skill/SKILL.md'), 'ut
 if (!embeddedSkill || JSON.parse(embeddedSkill[1]).trim() !== sourceSkill.trim()) throw new Error('Embedded browser skill differs from its Markdown source');
 const clientSource = fs.readFileSync(path.join(nativeRoot, 'lib/client.cjs'), 'utf8');
 new vm.Script(clientSource);
-if (!clientSource.includes(fs.readFileSync(path.join(root, 'harness/dsh-annotation-client.js'), 'utf8').trim())) throw new Error('Native client differs from the selected-chat bridge source');
-for (const name of ['dsh-annotations.mjs', 'dsh-session-scope.mjs', 'dsh-task-finish.mjs']) if (fs.readFileSync(path.join(nativeRoot, 'lib', name), 'utf8') !== fs.readFileSync(path.join(root, 'harness', name), 'utf8')) throw new Error('Native helper differs from source: ' + name);
+if (!clientSource.includes('bsk-annotation-selected-conversation')) throw new Error('Native annotation bridge missing');
+for (const name of ['dsh-annotations.mjs', 'dsh-session-scope.mjs', 'dsh-task-finish.mjs', 'dsh-preview.mjs']) if (fs.readFileSync(path.join(nativeRoot, 'lib', name), 'utf8') !== fs.readFileSync(path.join(root, 'harness', name), 'utf8')) throw new Error('Native helper differs from source: ' + name);
 execFileSync(path.join(root, 'bin/bsk.exe'), ['--version'], { windowsHide: true });
 await import(pathToFileURL(path.join(root, 'verify.mjs')));
 await import(pathToFileURL(path.join(root, 'annotation-check.mjs')));
 await import(pathToFileURL(path.join(root, 'annotation-client-check.mjs')));
 await import(pathToFileURL(path.join(root, 'notice-check.mjs')));
 await import(pathToFileURL(path.join(root, 'task-finish-check.mjs')));
+await import(pathToFileURL(path.join(root, 'preview-check.mjs')));
 console.log(`PASS: ${manifest.files.length} files, offline plugin imports, bundled CLI and extension checks`);

@@ -15,7 +15,8 @@ const sandbox = vm.createContext({
     slots: { inject: (name, callback) => callback(), register: (config, Component) => { registration = { config, Component }; } }
   }
 });
-vm.runInContext(fs.readFileSync(new URL('./harness/dsh-annotation-client.js', import.meta.url), 'utf8'), sandbox);
+const classic = text => text.replace(/^import .*;\r?\n/gm, '').replace(/^export \{.*\};?\r?$/gm, '').replace(/^export /gm, '');
+vm.runInContext(classic(fs.readFileSync(new URL('./harness/dsh-annotation-client.js', import.meta.url), 'utf8')), sandbox);
 vm.runInContext('dshRegisterAnnotationClient(context)', sandbox);
 assert.equal(registration.config.name, 'conversation.input.overlay');
 registration.Component(registration.config.inject('selected-chat-a'));
