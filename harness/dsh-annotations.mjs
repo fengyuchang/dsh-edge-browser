@@ -133,7 +133,8 @@ export function registerAnnotationRoutes(ctx, registry, createUserMessage) {
         const attachments = ctx.get('attachments');
         if (!attachments) throw new Error('Attachment service unavailable');
         const name = '浏览器局部标注.png';
-        const model = await ctx.get('llm')?.resolveModelInfo(agent.options.provider, agent.options.model);
+        const selection = agent.model?.current?.() ?? agent.options;
+        const model = await ctx.get('llm')?.resolveModelInfo(selection.provider, selection.model);
         if (model?.inputModalities?.includes('image')) {
           content.push({ type: 'image', attachment: await attachments.saveImage({ data, mediaType: 'image/png', name }) });
         } else {

@@ -9,13 +9,17 @@ import { executeScopedBrowserAction } from './harness/dsh-session-scope.mjs';
 const extensionId = 'a'.repeat(32), otherId = 'b'.repeat(32);
 const routes = new Map(), admitted = [];
 let vision = false, imageWrites = 0, hostNotReloaded = false, changeOwnerDuringSave = false;
+const resolvedModels = [];
 const agent = { id: 'session-browser-owner', status: 'idle', options: { provider: 'fixture', model: 'fixture' }, steer: message => admitted.push(message) };
 let owners = [agent.id];
 const registry = { isUsable: id => id === 'browser-owned', dshOwnersOf: () => owners };
 const ctx = { get: name => ({
   webServer: { register: route => { routes.set(route.path, route.handler); return () => routes.delete(route.path); } },
   agents: { get: id => id === agent.id ? agent : undefined },
-  llm: { resolveModelInfo: async () => ({ inputModalities: vision ? ['text', 'image'] : ['text'] }) },
+  llm: { resolveModelInfo: async (provider, model) => {
+    resolvedModels.push({ provider, model });
+    return { inputModalities: model === 'selected-image' || model !== 'selected-text' && vision ? ['text', 'image'] : ['text'] };
+  } },
   attachments: {
     validateImage: async input => assert.equal(input.mediaType, 'image/png'),
     saveImage: async () => { imageWrites++; return { attachmentId: 'image-fixture', mediaType: 'image/png', width: 1, height: 1 }; },
@@ -117,6 +121,24 @@ try {
   target = await request('/context', { browserSessionId: 'browser-owned' });
   assert.equal((await request('/submit', { ...annotation, token: target.token })).accepted, true);
   assert.equal(admitted.at(-1).content[1].type, 'image'); assert.equal(imageWrites, 1);
+
+  // DSH 0.2.2 retains initial options after the session records a model switch.
+  vision = false;
+  agent.model = { current: () => ({ provider: 'selected-provider', model: 'selected-image' }) };
+  target = await request('/context', { browserSessionId: 'browser-owned' });
+  assert.equal((await request('/submit', { ...annotation, token: target.token })).accepted, true);
+  assert.deepEqual(resolvedModels.at(-1), { provider: 'selected-provider', model: 'selected-image' });
+  assert.equal(admitted.at(-1).content[1].type, 'image', 'Use the newly selected vision model');
+  vision = true;
+  agent.model.current = () => ({ provider: 'selected-provider', model: 'selected-text' });
+  target = await request('/context', { browserSessionId: 'browser-owned' });
+  assert.equal((await request('/submit', { ...annotation, token: target.token })).accepted, true);
+  assert.equal(admitted.at(-1).content[1].type, 'file', 'A switch to text-only must not inject image input');
+  agent.model.current = () => undefined;
+  target = await request('/context', { browserSessionId: 'browser-owned' });
+  assert.equal((await request('/submit', { ...annotation, token: target.token })).accepted, true);
+  assert.deepEqual(resolvedModels.at(-1), agent.options, 'Unselected/older agents retain the options fallback');
+  delete agent.model;
 
   await operation(async () => 'initial');
   assert.equal(JSON.parse(fs.readFileSync(new URL('./extension/manifest.json', import.meta.url))).commands['dsh-annotate'].suggested_key.default, 'Alt+Shift+A');

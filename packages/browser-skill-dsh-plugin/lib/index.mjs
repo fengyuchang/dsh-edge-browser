@@ -201,7 +201,8 @@ function registerAnnotationRoutes(ctx, registry, createUserMessage) {
 				const attachments = ctx.get("attachments");
 				if (!attachments) throw new Error("Attachment service unavailable");
 				const name = "浏览器局部标注.png";
-				if ((await ctx.get("llm")?.resolveModelInfo(agent.options.provider, agent.options.model))?.inputModalities?.includes("image")) content.push({
+				const selection = agent.model?.current?.() ?? agent.options;
+				if ((await ctx.get("llm")?.resolveModelInfo(selection.provider, selection.model))?.inputModalities?.includes("image")) content.push({
 					type: "image",
 					attachment: await attachments.saveImage({
 						data,

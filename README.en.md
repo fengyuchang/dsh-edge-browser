@@ -4,7 +4,7 @@ Visible, background control of your everyday Edge browser for DeepSeek Harness.
 
 [中文](README.md) · [Downloads](https://github.com/fengyuchang/dsh-edge-browser/releases/latest) · [Project site](https://fengyuchang.github.io/dsh-edge-browser/)
 
-**Latest: 0.4.2-dsh.1, 2026-11-06.** Coordinated protocol 1.8 upgrade, native step and reusable target contexts, bounded IPC preview without overlay flicker, and background task windows. See the [changelog](docs/changelog.md) and [upgrade instructions](docs/installation.md).
+**Latest: 0.4.2-dsh.2, 2026-11-07.** Fixes annotation attachment routing after switching models on DSH 0.2.2-rc.1. Reads the current model selection and retains the older-kernel fallback. This patch updates the native Harness plugin; the Edge extension and CLI remain on 0.4.2/protocol 1.8. See the [changelog](docs/changelog.md).
 
 Built on Tencent BrowserSkill 0.4.2. This community customization reuses the
 browser's signed-in sessions, controls task tabs without moving the system mouse,

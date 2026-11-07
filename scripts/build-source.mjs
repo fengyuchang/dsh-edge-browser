@@ -5,6 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 const root=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const version=JSON.parse(fs.readFileSync(path.join(root,'package.json'))).version;
 const option=n=>{const i=process.argv.indexOf(n);return i<0?undefined:process.argv[i+1];};
 const pin=JSON.parse(fs.readFileSync(path.join(root,'source/upstream.json')));
 const upstream=path.resolve(option('--upstream')??path.join(root,'.cache/browser-skill-source'));
@@ -39,7 +40,7 @@ fs.cpSync(path.join(root,'source/content'),path.join(output,'extension/content-s
 const nativeOutput=path.join(output,'packages/browser-skill-dsh-plugin');
 fs.mkdirSync(nativeOutput,{recursive:true});
 for(const file of ['lib','skill','LICENSE','cordis.patch.yml'])fs.cpSync(path.join(native,file),path.join(nativeOutput,file),{recursive:true});
-const meta=JSON.parse(fs.readFileSync(path.join(native,'package.json')));delete meta.devDependencies;delete meta.scripts;delete meta.publishConfig;meta.private=true;meta.version='0.4.2-dsh.1';
+const meta=JSON.parse(fs.readFileSync(path.join(native,'package.json')));delete meta.devDependencies;delete meta.scripts;delete meta.publishConfig;meta.private=true;meta.version=version;
 fs.writeFileSync(path.join(nativeOutput,'package.json'),JSON.stringify(meta,null,2)+'\n');
 for(const file of ['dsh-annotations.mjs','dsh-session-scope.mjs','dsh-task-finish.mjs','dsh-preview.mjs'])fs.copyFileSync(path.join(root,'harness',file),path.join(nativeOutput,'lib',file));
 const digest=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
