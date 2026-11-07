@@ -41,19 +41,128 @@ index c71fab9..da5d0b6 100644
              opacity: 0,
            }}
          />
+diff --git a/apps/extension/src/content/ControlInputBlocker.tsx b/apps/extension/src/content/ControlInputBlocker.tsx
+index 8e3b776..0ee1228 100644
+--- a/apps/extension/src/content/ControlInputBlocker.tsx
++++ b/apps/extension/src/content/ControlInputBlocker.tsx
+@@ -1,6 +1,6 @@
+ import { type SyntheticEvent, useEffect, useRef } from "react";
+ 
+-/** Preserve fallback input blocking until a real cooperation state is available. */
++/** Keep page gestures separate from explicit human control and extension controls. */
+ export function ControlInputBlocker({ automationBypass }: { automationBypass: boolean }) {
+   const blockerRef = useRef<HTMLDivElement>(null);
+ 
+@@ -8,18 +8,16 @@ export function ControlInputBlocker({ automationBypass }: { automationBypass: bo
+     if (automationBypass) return;
+     const blocker = blockerRef.current;
+     const stopScroll = (event: WheelEvent | TouchEvent) => {
++      if (globalThis.dshIsAnnotationEvent?.(event) ||
++          (globalThis.dshIsControlEvent?.(event) && !event.composedPath().includes(blocker!))) return;
+       event.preventDefault();
+-      event.stopPropagation();
++      event.stopImmediatePropagation();
+     };
+     blocker?.addEventListener("wheel", stopScroll, { passive: false });
+     blocker?.addEventListener("touchmove", stopScroll, { passive: false });
+-    window.addEventListener("wheel", stopScroll, { capture: true, passive: false });
+-    window.addEventListener("touchmove", stopScroll, { capture: true, passive: false });
+     return () => {
+       blocker?.removeEventListener("wheel", stopScroll);
+       blocker?.removeEventListener("touchmove", stopScroll);
+-      window.removeEventListener("wheel", stopScroll, { capture: true });
+-      window.removeEventListener("touchmove", stopScroll, { capture: true });
+     };
+   }, [automationBypass]);
+ 
 diff --git a/apps/extension/src/content/ControlOverlay.tsx b/apps/extension/src/content/ControlOverlay.tsx
-index 0a0061e..cc3057e 100644
+index 0a0061e..53c2c14 100644
 --- a/apps/extension/src/content/ControlOverlay.tsx
 +++ b/apps/extension/src/content/ControlOverlay.tsx
-@@ -104,6 +104,7 @@ export function ControlOverlay({
-       {!state && <ControlInputBlocker automationBypass={automationBypass} />}
+@@ -56,6 +56,7 @@ export interface ControlOverlayProps {
+   sessionId?: string | null;
+   controller?: ControllerInfo;
+   visible: boolean;
++  inputLocked?: boolean;
+   state?: CooperationView;
+   interrupting: boolean;
+   automationBypass: boolean;
+@@ -67,43 +68,45 @@ export function ControlOverlay({
+   controller,
+   visible,
+   state,
++  inputLocked = visible && state?.mode !== "held",
+   interrupting,
+   automationBypass,
+   onInterrupt,
+ }: ControlOverlayProps) {
+   const { t } = useTranslation("extension");
+   const [pending, setPending] = useState(false);
+-  if (!visible) return null;
++  const [error, setError] = useState("");
++  if (!visible) return inputLocked ? <ControlInputBlocker automationBypass={automationBypass} /> : null;
+   const control = async (action: "hold" | "resume") => {
+     if (!state) return;
+     setPending(true);
++    setError("");
+     try {
+-      await chrome.runtime.sendMessage({
++      const result = await chrome.runtime.sendMessage({
+         kind: COOPERATION_CONTROL,
+         revision: state.revision,
+         action,
+       });
++      if (!result?.ok) throw new Error("控制状态已变化，请再点一次。页面仍保持原有控制权。");
++    } catch (error) {
++      setError(error instanceof Error ? error.message : "切换控制失败，请重试。");
+     } finally {
+       setPending(false);
+     }
+   };
+-  const status = state?.editing && state.mode === "human" ? "editing" : state?.mode;
+-  const resuming = state?.mode === "held" || state?.mode === "human";
++  const resuming = state?.mode === "held";
+   const StatusIcon = state ? statusIcons[state.mode] : RiCursorLine;
+   const stopping = !state && interrupting;
+   const ActionIcon = resuming ? RiPlayLine : RiPauseLine;
+-  const actionLabel = controller
+-    ? t(resuming ? "controlOverlay.resumeController" : "controlOverlay.holdController", {
+-        name: controller.name,
+-      })
+-    : t(resuming ? "cooperation.resume" : "cooperation.hold");
++  const actionLabel = resuming ? "完成并交还 AI" : "用户插入";
+ 
+   return (
+     <>
+-      <ControlGlow />
+-      {!state && <ControlInputBlocker automationBypass={automationBypass} />}
++      {inputLocked && <ControlGlow />}
++      {inputLocked && <ControlInputBlocker automationBypass={automationBypass} />}
        <AgentTarget target={state?.target} name={controller?.name} />
        <div
 +        ref={globalThis.dshBindControlPill}
          className="bsk-cooperation"
          data-slot={state ? "cooperation-toolbar" : "control-overlay-card"}
          data-mode={state?.mode}
-@@ -181,6 +182,8 @@ export function ControlOverlay({
+@@ -159,14 +162,13 @@ export function ControlOverlay({
+             <div className="bsk-cooperation-copy" role="status" aria-live="polite">
+               <div className="bsk-cooperation-status">
+                 <span className="bsk-cooperation-dot" aria-hidden="true" />
+-                <span>{status ? t(`cooperation.${status}`) : t("controlOverlay.status")}</span>
++                <span>{resuming ? "用户正在操作" : state?.mode === "yielding" ? "正在暂停 AI，请稍候" : t("controlOverlay.status")}</span>
+               </div>
+-              {status && (
+-                <span className="bsk-cooperation-hint">{t(`cooperation.hints.${status}`)}</span>
+-              )}
++              <span className="bsk-cooperation-hint">{resuming ? "完成后点击下方按钮，交还 AI 继续" : "页面已锁定，点击「用户插入」可主动接手"}</span>
+             </div>
+           </div>
+         </div>
++        {error && <div role="alert">{error}</div>}
+         <div className="bsk-cooperation-actions">
+           {state && (
+             <button
+@@ -181,6 +183,8 @@ export function ControlOverlay({
                </span>
              </button>
            )}
@@ -62,6 +171,541 @@ index 0a0061e..cc3057e 100644
            <button
              className="bsk-cooperation-stop"
              data-slot="control-overlay-stop-all"
+diff --git a/apps/extension/src/content/__tests__/ControlOverlay.cooperation.test.tsx b/apps/extension/src/content/__tests__/ControlOverlay.cooperation.test.tsx
+index 7c22b8d..4335b22 100644
+--- a/apps/extension/src/content/__tests__/ControlOverlay.cooperation.test.tsx
++++ b/apps/extension/src/content/__tests__/ControlOverlay.cooperation.test.tsx
+@@ -16,7 +16,7 @@ const modes = ["ready", "acting", "human", "held", "yielding", "syncing", "unava
+ describe("ControlOverlay cooperation", () => {
+   const sendMessage = vi.fn();
+   beforeEach(() => {
+-    sendMessage.mockReset().mockResolvedValue(undefined);
++    sendMessage.mockReset().mockResolvedValue({ ok: true });
+     vi.stubGlobal("chrome", { runtime: { sendMessage } });
+   });
+   afterEach(() => {
+@@ -51,21 +51,14 @@ describe("ControlOverlay cooperation", () => {
+       />,
+     );
+     const glow = container.querySelector<HTMLElement>('[data-slot="control-overlay"]');
+-    expect(glow).not.toBeNull();
+-    expect(glow?.style.pointerEvents).toBe("none");
+-    expect(glow?.getAttribute("aria-hidden")).toBe("true");
+-    expect(container.querySelector('[data-slot="control-overlay-blocker"]')).toBeNull();
++    expect(!!glow).toBe(mode !== "held");
++    expect(!!container.querySelector('[data-slot="control-overlay-blocker"]')).toBe(mode !== "held");
+     expect(container.querySelector('[data-slot="control-overlay-card"]')).toBeNull();
+-    const resume = mode === "human" || mode === "held";
++    const resume = mode === "held";
+     const action = getByRole("button", {
+-      name: i18n.t(resume ? "cooperation.resume" : "cooperation.hold", { ns: "extension" }),
++      name: resume ? "完成并交还 AI" : "用户插入",
+     }) as HTMLButtonElement;
+-    expect(getByRole("status").textContent).toContain(
+-      i18n.t(`cooperation.${mode}`, { ns: "extension" }),
+-    );
+-    expect(getByRole("status").textContent).toContain(
+-      i18n.t(`cooperation.hints.${mode}`, { ns: "extension" }),
+-    );
++    expect(getByRole("status").textContent).toContain(resume ? "用户正在操作" : mode === "yielding" ? "正在暂停 AI" : i18n.t("controlOverlay.status", { ns: "extension" }));
+     expect(sendMessage).not.toHaveBeenCalled();
+     expect(action.disabled).toBe(mode === "yielding");
+     await act(async () => fireEvent.click(action));
+@@ -92,7 +85,7 @@ describe("ControlOverlay cooperation", () => {
+         onInterrupt={onStop}
+       />,
+     );
+-    expect(getByRole("status").textContent).toBe("你正在编辑完成编辑后交给 Agent");
++    expect(getByRole("button", { name: "用户插入" })).toBeDefined();
+     rerender(
+       <ControlOverlay
+         visible={true}
+@@ -102,8 +95,8 @@ describe("ControlOverlay cooperation", () => {
+         onInterrupt={onStop}
+       />,
+     );
+-    expect(getByRole("status").textContent).toBe("Agent 已暂停准备好后交给 Agent");
+-    await act(async () => fireEvent.click(getByRole("button", { name: "交给 Agent" })));
++    expect(getByRole("status").textContent).toContain("用户正在操作");
++    await act(async () => fireEvent.click(getByRole("button", { name: "完成并交还 AI" })));
+     expect(sendMessage).toHaveBeenCalledExactlyOnceWith({
+       kind: COOPERATION_CONTROL,
+       revision: 23,
+@@ -111,6 +104,15 @@ describe("ControlOverlay cooperation", () => {
+     });
+   });
+ 
++  it("keeps page input locked and reports a rejected takeover without assuming permission", async () => {
++    sendMessage.mockResolvedValue({ ok: false });
++    const { getByRole, container } = render(<ControlOverlay visible state={view("ready")} interrupting={false} automationBypass={false} onInterrupt={vi.fn()} />);
++    await act(async () => fireEvent.click(getByRole("button", { name: "用户插入" })));
++    expect(getByRole("alert").textContent).toContain("控制状态已变化");
++    expect(container.querySelector('[data-slot="control-overlay-blocker"]')).not.toBeNull();
++    expect((getByRole("button", { name: "用户插入" }) as HTMLButtonElement).disabled).toBe(false);
++  });
++
+   it("blocks duplicate hand-back while pending and keeps stop available", async () => {
+     let finish: () => void = () => {};
+     sendMessage.mockReturnValue(
+@@ -124,11 +126,11 @@ describe("ControlOverlay cooperation", () => {
+         visible={true}
+         interrupting={false}
+         automationBypass={false}
+-        state={view("human")}
++        state={view("held")}
+         onInterrupt={onStop}
+       />,
+     );
+-    const action = getByRole("button", { name: "交给 Agent" }) as HTMLButtonElement;
++    const action = getByRole("button", { name: "完成并交还 AI" }) as HTMLButtonElement;
+     fireEvent.click(action);
+     expect(action.disabled).toBe(true);
+     fireEvent.click(action);
+@@ -148,14 +150,14 @@ describe("ControlOverlay cooperation", () => {
+           visible={true}
+           interrupting={false}
+           automationBypass={false}
+-          state={view("human", { editing: true })}
++          state={view("held", { editing: true })}
+           onInterrupt={vi.fn()}
+         />
+       </>,
+     );
+     const field = getByRole("textbox");
+     await user.click(field);
+-    await user.click(getByRole("button", { name: "交给 Agent" }));
++    await user.click(getByRole("button", { name: "完成并交还 AI" }));
+     expect(document.activeElement).toBe(field);
+     expect(sendMessage).toHaveBeenCalledTimes(1);
+   });
+@@ -172,7 +174,7 @@ describe("ControlOverlay cooperation", () => {
+       />,
+     );
+     await user.tab();
+-    expect(document.activeElement).toBe(getByRole("button", { name: "交给 Agent" }));
++    expect(document.activeElement).toBe(getByRole("button", { name: "完成并交还 AI" }));
+     await user.keyboard("{Enter}");
+     expect(sendMessage).toHaveBeenCalledExactlyOnceWith({
+       kind: COOPERATION_CONTROL,
+diff --git a/apps/extension/src/content/__tests__/ControlOverlay.test.tsx b/apps/extension/src/content/__tests__/ControlOverlay.test.tsx
+index faa7bdc..b86abb8 100644
+--- a/apps/extension/src/content/__tests__/ControlOverlay.test.tsx
++++ b/apps/extension/src/content/__tests__/ControlOverlay.test.tsx
+@@ -26,7 +26,7 @@ describe("ControlOverlay fallback", () => {
+     expect(getByText("Codex")).toBeTruthy();
+     expect(getByText("<b>Search</b>")).toBeTruthy();
+     expect(getByText("aaaa")).toBeTruthy();
+-    expect(getByRole("button", { name: "暂停 Codex" })).toBeTruthy();
++    expect(getByRole("button", { name: "用户插入" })).toBeTruthy();
+     expect(container.querySelector(".bsk-controller-details b")).toBeNull();
+     rerender(
+       <ControlOverlay
+@@ -36,7 +36,7 @@ describe("ControlOverlay fallback", () => {
+         state={{ mode: "held", editing: false, revision: 2 }}
+       />,
+     );
+-    expect(getByRole("button", { name: "交给 Claude" })).toBeTruthy();
++    expect(getByRole("button", { name: "完成并交还 AI" })).toBeTruthy();
+     expect(container.textContent).not.toContain("Codex");
+     expect(container.textContent).not.toContain("Search");
+     rerender(<ControlOverlay {...props} sessionId="legacy" />);
+@@ -59,7 +59,7 @@ describe("ControlOverlay fallback", () => {
+     expect((blocker as HTMLElement).style.pointerEvents).toBe("none");
+ 
+     expect(container.querySelector("[data-slot='control-overlay-card']")).not.toBeNull();
+-    expect(getByRole("status").textContent).toBe("Agent 正在控制");
++    expect(getByRole("status").textContent).toContain("Agent 正在控制");
+     expect((getByRole("button", { name: "停止任务" }) as HTMLButtonElement).disabled).toBe(false);
+     expect(queryByRole("button", { name: "暂停 Agent" })).toBeNull();
+     expect(sendMessage).not.toHaveBeenCalled();
+@@ -109,7 +109,7 @@ describe("ControlOverlay fallback", () => {
+     expect(sendMessage).not.toHaveBeenCalled();
+   });
+ 
+-  it("reuses the card and glow while removing fallback input blocking when cooperation arrives", () => {
++  it("reuses the card, glow and input blocking when cooperation arrives", () => {
+     const props = {
+       visible: true,
+       interrupting: false,
+@@ -119,16 +119,16 @@ describe("ControlOverlay fallback", () => {
+     const { container, getByRole, rerender } = render(<ControlOverlay {...props} />);
+     const card = getByRole("toolbar");
+     const glow = container.querySelector('[data-slot="control-overlay"]');
+-    const scroll = (type: string) => window.dispatchEvent(new Event(type, { cancelable: true }));
++    const scroll = (type: string) => container.querySelector('[data-slot="control-overlay-blocker"]')!.dispatchEvent(new Event(type, { cancelable: true }));
+     expect(scroll("wheel")).toBe(false);
+     expect(scroll("touchmove")).toBe(false);
+ 
+     rerender(<ControlOverlay {...props} state={{ mode: "ready", editing: false, revision: 23 }} />);
+     expect(getByRole("toolbar")).toBe(card);
+     expect(container.querySelector('[data-slot="control-overlay"]')).toBe(glow);
+-    expect(container.querySelector('[data-slot="control-overlay-blocker"]')).toBeNull();
+-    expect(scroll("wheel")).toBe(true);
+-    expect(scroll("touchmove")).toBe(true);
++    expect(container.querySelector('[data-slot="control-overlay-blocker"]')).not.toBeNull();
++    expect(scroll("wheel")).toBe(false);
++    expect(scroll("touchmove")).toBe(false);
+     expect(sendMessage).not.toHaveBeenCalled();
+   });
+ 
+@@ -140,7 +140,7 @@ describe("ControlOverlay fallback", () => {
+       onInterrupt: vi.fn(),
+     };
+     const { container, rerender, unmount } = render(<ControlOverlay {...props} />);
+-    const scroll = () => window.dispatchEvent(new Event("wheel", { cancelable: true }));
++    const scroll = () => (container.querySelector('[data-slot="control-overlay-blocker"]') ?? window).dispatchEvent(new Event("wheel", { cancelable: true }));
+     expect(scroll()).toBe(false);
+     rerender(<ControlOverlay {...props} automationBypass />);
+     expect(scroll()).toBe(true);
+diff --git a/apps/extension/src/content/__tests__/cooperation-capture.test.ts b/apps/extension/src/content/__tests__/cooperation-capture.test.ts
+index 14e19b0..9a63614 100644
+--- a/apps/extension/src/content/__tests__/cooperation-capture.test.ts
++++ b/apps/extension/src/content/__tests__/cooperation-capture.test.ts
+@@ -12,6 +12,7 @@ import type { CdpRunner } from "@/tools/shared";
+ import { attachCooperationCapture } from "../cooperation-capture";
+ 
+ let dispose: (() => void) | undefined;
++let sendTabMessage: (message: unknown) => void;
+ afterEach(() => {
+   dispose?.();
+   dispose = undefined;
+@@ -35,6 +36,7 @@ function collector(shadowRoot?: (element: HTMLElement) => ShadowRoot | null) {
+     },
+   });
+   dispose = attachCooperationCapture();
++  sendTabMessage = (message) => receive(message, {}, () => {});
+   return (
+     kind = COOPERATION_READ,
+     lease = "first",
+@@ -48,6 +50,58 @@ function collector(shadowRoot?: (element: HTMLElement) => ShadowRoot | null) {
+   };
+ }
+ 
++it("locks human input across frames until explicit hold/help, preserving native input and ordered resets", () => {
++  document.body.innerHTML = '<input aria-label="City" data-bsk-overlay>';
++  const field = document.querySelector("input")!;
++  const read = collector(); read();
++  const state = (generation: number, mode = "ready") => ({ type: "bh-agent-overlay-state", epoch: "worker", generation,
++    sessionId: "task", mode: "control", cooperation: { mode, revision: generation, editing: false } });
++  const key = () => {
++    const event = new KeyboardEvent("keydown", { key: "a", bubbles: true, cancelable: true });
++    Object.defineProperty(event, "isTrusted", { value: true }); field.dispatchEvent(event); return event;
++  };
++  sendTabMessage(state(1));
++  expect(key().defaultPrevented).toBe(true);
++  sendTabMessage(state(2, "human"));
++  expect(key().defaultPrevented).toBe(true);
++  sendTabMessage(state(3, "yielding"));
++  expect(key().defaultPrevented).toBe(true);
++  sendTabMessage(state(4, "held"));
++  expect(key().defaultPrevented).toBe(false);
++  sendTabMessage(state(5));
++  sendTabMessage(state(4, "held")); // Late ownership updates cannot unlock.
++  expect(key().defaultPrevented).toBe(true);
++  sendTabMessage({ type: "bsk-help-request", requestId: "login", prompt: "Log in", selectors: [], timeoutMs: 60000 });
++  expect(key().defaultPrevented).toBe(false);
++  sendTabMessage({ type: "bsk-help-cancel", requestId: "other" });
++  expect(key().defaultPrevented).toBe(false);
++  sendTabMessage({ type: "bsk-help-cancel", requestId: "login" });
++  expect(key().defaultPrevented).toBe(true);
++
++  field.focus();
++  read(COOPERATION_ARM, "first", { type: "beforeinput", text: "native" });
++  const input = new InputEvent("beforeinput", { data: "native", inputType: "insertText", bubbles: true, cancelable: true });
++  Object.defineProperty(input, "isTrusted", { value: true }); field.dispatchEvent(input);
++  expect(input.defaultPrevented).toBe(false);
++  sendTabMessage({ type: "bh-agent-overlay-reset", epoch: "worker", generation: 6, sessionId: "task" });
++  expect(key().defaultPrevented).toBe(false);
++  sendTabMessage(state(5));
++  expect(key().defaultPrevented).toBe(false);
++});
++
++it("does not turn marker attributes into a page-input bypass during native click passthrough", () => {
++  document.body.innerHTML = '<button data-bsk-overlay>Apply</button>';
++  const field = document.querySelector("button")!;
++  const read = collector(); read();
++  sendTabMessage({ type: "bh-agent-overlay-state", epoch: "worker", generation: 1, sessionId: "task", mode: "control" });
++  for (const type of ["pointerdown", "pointerup", "click", "wheel"]) {
++    const event = new MouseEvent(type, { bubbles: true, cancelable: true });
++    Object.defineProperty(event, "isTrusted", { value: true });
++    field.dispatchEvent(event);
++    expect(event.defaultPrevented, type).toBe(true);
++  }
++});
++
+ it("collects and arms page interaction when crypto.randomUUID is unavailable", () => {
+   // Ordinary HTTP origins expose getRandomValues but not randomUUID.
+   vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
+diff --git a/apps/extension/src/content/__tests__/overlay-controller.test.ts b/apps/extension/src/content/__tests__/overlay-controller.test.ts
+index 6f4df36..366915d 100644
+--- a/apps/extension/src/content/__tests__/overlay-controller.test.ts
++++ b/apps/extension/src/content/__tests__/overlay-controller.test.ts
+@@ -1,5 +1,19 @@
+ import { describe, expect, it, vi } from "vitest";
+-import { OverlayController, shouldShowAgentControlOverlay } from "../overlay-controller";
++import { OverlayController, shouldShowAgentControlOverlay, shouldLockAgentInput } from "../overlay-controller";
++
++it("keeps page input locked when hints hide or automatic activity yields, until explicit hold/help", () => {
++  const overlay = new OverlayController();
++  overlay.applyAgentControlMode("task", "control");
++  overlay.setControlHintsHidden(true);
++  expect(shouldShowAgentControlOverlay(overlay.snapshot())).toBe(false);
++  for (const mode of ["ready", "acting", "human", "yielding", "syncing", "unavailable"] as const)
++    expect(shouldLockAgentInput(overlay.snapshot(), { mode, revision: 1, editing: false })).toBe(true);
++  expect(shouldLockAgentInput(overlay.snapshot(), { mode: "held", revision: 2, editing: false })).toBe(false);
++  overlay.applyAgentControlMode("task", "paused");
++  expect(shouldLockAgentInput(overlay.snapshot())).toBe(false);
++  overlay.applyAgentControlMode(null, "hidden");
++  expect(shouldLockAgentInput(overlay.snapshot())).toBe(false);
++});
+ 
+ it("clears identity on authoritative legacy/hidden state and only resets the matching session", () => {
+   const overlay = new OverlayController();
+diff --git a/apps/extension/src/content/cooperation-capture.ts b/apps/extension/src/content/cooperation-capture.ts
+index 67558a7..9b6fb0b 100644
+--- a/apps/extension/src/content/cooperation-capture.ts
++++ b/apps/extension/src/content/cooperation-capture.ts
+@@ -11,7 +11,9 @@ import {
+   type HumanActivity,
+   type InputExpectation,
+ } from "@/cooperation/types";
+-import { OVERLAY_HOST_SELECTOR } from "@/lib/overlay-bridge";
++import { OVERLAY_HOST_SELECTOR, isOverlayAgentStateMessage, isOverlayAgentOverlayResetMessage, OverlayVersionGate, type OverlayAgentStateMessage } from "@/lib/overlay-bridge";
++import { isHelpRequestMessage, isHelpCancelMessage, HELP_QUERY } from "@/lib/help-bridge";
++import { isRecordStartMessage, isRecordStopMessage, isRecordCancelMessage, RECORD_QUERY } from "@/lib/record-bridge";
+ import { createRandomUuid } from "@/lib/random-uuid";
+ import { sensitiveAutocomplete } from "@/lib/sensitive-autocomplete";
+ 
+@@ -23,6 +25,18 @@ const INPUT_CLOCK_PRECISION_MS = 1.5;
+ /** Isolated-world collection also covers frames; no page-world control API is exposed. */
+ export function attachCooperationCapture() {
+   let enabled = false;
++  let overlayState: OverlayAgentStateMessage | undefined;
++  const overlayVersions = new OverlayVersionGate();
++  let helpId: string | undefined, recordId: string | undefined, afterRecord = false;
++  let requestVersion = 0;
++  const pageLocked = () => !!overlayState?.sessionId && overlayState.mode === "control" &&
++    overlayState.cooperation?.mode !== "held" && !helpId && !recordId && !afterRecord;
++  const blockKey = (event: Event) => {
++    // Tab can always reach the extension controls, including from an iframe.
++    if ((event as KeyboardEvent).key !== "Tab" ||
++        (event.type === "keydown" && globalThis.dshFocusControl?.())) event.preventDefault();
++    event.stopImmediatePropagation();
++  };
+   let lease: string | undefined;
+   const retired = new Set<string>();
+   const state: FrameState = {
+@@ -362,12 +376,18 @@ export function attachCooperationCapture() {
+     publish();
+   };
+   const onEvent = (event: Event) => {
+-    if (!enabled) return;
++    const ownControl = globalThis.dshIsControlEvent?.(event) || globalThis.dshIsAnnotationEvent?.(event);
++    if (ownControl) return;
++    const locked = pageLocked();
++    if (!enabled) {
++      if (locked && event.isTrusted && /^(key|beforeinput|composition)/.test(event.type)) blockKey(event);
++      return;
++    }
+     const release =
+       (dragging && ["dragend", "drop"].includes(event.type)) ||
+       (pointer && !pointer.released && ["pointerup", "pointercancel"].includes(event.type)) ||
+       (event.type === "keyup" && keys.has((event as KeyboardEvent).key));
+-    if (!release && event.composedPath().some(overlay)) return;
++    if (!release && !locked && event.composedPath().some(overlay)) return;
+     let target = event.composedPath()[0] ?? event.target;
+     // Closed shadow roots retarget editing events to their host. Resolve the
+     // same deep focus used by collection and native text attribution.
+@@ -458,6 +478,7 @@ export function attachCooperationCapture() {
+         input.data === expected.text;
+       const human = eventAgent === false || pointer?.agent === false;
+       const agent = !human && (insert || (eventAgent ?? pointer?.agent ?? false));
++      if (locked && !agent) { blockKey(event); return; }
+       if (insert && agent) expectation = undefined;
+       inputSource = { target, agent, before: inputValue(target) };
+       clearTimeout(inputTimer);
+@@ -484,13 +505,16 @@ export function attachCooperationCapture() {
+       return;
+     }
+     if (event.type === "pointerdown") {
+-      pointer = { agent: matches(event), released: false, confirmed: false };
++      const agent = matches(event);
++      if (locked && !agent) { event.preventDefault(); event.stopImmediatePropagation(); return; }
++      pointer = { agent, released: false, confirmed: false };
+       clearTimeout(pointerTimer);
+       state.revision++;
+       publish();
+       return;
+     }
+     if (event.type === "pointerup" || event.type === "pointercancel") {
++      if (locked && !pointer?.agent) { event.preventDefault(); event.stopImmediatePropagation(); return; }
+       if (pointer) pointer.released = true;
+       clearTimeout(pointerTimer);
+       // The default click follows pointerup in the same browser task.
+@@ -508,6 +532,7 @@ export function attachCooperationCapture() {
+       // Browsing never transfers control. Retain only the source for a native
+       // control whose wheel handler actually changes its value in this task.
+       eventAgent = matches(event);
++      if (locked && !eventAgent) { eventAgent = undefined; event.preventDefault(); event.stopImmediatePropagation(); return; }
+       clearTimeout(eventTimer);
+       eventTimer = setTimeout(() => {
+         eventAgent = undefined;
+@@ -517,6 +542,7 @@ export function attachCooperationCapture() {
+     if (event.type === "keydown" || event.type === "keypress" || event.type === "keyup") {
+       const key = (event as KeyboardEvent).key;
+       eventAgent = event.type === "keyup" ? keys.get(key) : matches(event);
++      if (locked && !eventAgent) { eventAgent = undefined; blockKey(event); return; }
+       if (event.type === "keydown") keys.set(key, eventAgent ?? false);
+       else if (event.type === "keyup") keys.delete(key);
+       let releasedPending = false;
+@@ -545,6 +571,7 @@ export function attachCooperationCapture() {
+       return;
+     }
+     if (event.type === "compositionstart" || event.type === "compositionend") {
++      if (locked) { blockKey(event); return; }
+       composing = event.type === "compositionstart";
+       state.revision++;
+       publish();
+@@ -563,6 +590,7 @@ export function attachCooperationCapture() {
+           : (pointer?.agent ?? false);
+       if (event.type === "dragstart") dragAgent = agent;
+       if (agent) return;
++      if (locked) { event.preventDefault(); event.stopImmediatePropagation(); return; }
+       if (event.type === "dragstart") dragging = true;
+       if (pointer) pointer.confirmed = true;
+       if (
+@@ -597,7 +625,7 @@ export function attachCooperationCapture() {
+     "change",
+   ];
+   for (const event of events)
+-    document.addEventListener(event, onEvent, { capture: true, passive: true });
++    document.addEventListener(event, onEvent, { capture: true, passive: false });
+   // Chromium skips a node's legacy `mousewheel` listeners whenever that node has a
+   // `wheel` listener, even a passive one. Listen only while collecting so pages
+   // without a session keep their mousewheel handlers. Window capture runs before
+@@ -605,7 +633,7 @@ export function attachCooperationCapture() {
+   // Agent wheel from attribution even though this listener is registered late.
+   const listenWheel = (on: boolean) =>
+     on
+-      ? window.addEventListener("wheel", onEvent, { capture: true, passive: true })
++      ? window.addEventListener("wheel", onEvent, { capture: true, passive: false })
+       : window.removeEventListener("wheel", onEvent, true);
+   const onScroll = () => {
+     if (!enabled) return;
+@@ -644,6 +672,29 @@ export function attachCooperationCapture() {
+     _sender: chrome.runtime.MessageSender,
+     reply: (value: unknown) => void,
+   ) => {
++    // These authoritative tab messages reach every frame, including a focused
++    // cross-origin editor. Keep native input attribution; only human keys lock.
++    if (isOverlayAgentStateMessage(message)) {
++      if (overlayVersions.admit(message)) {
++        if ((overlayState && overlayState.sessionId !== message.sessionId) || !message.sessionId) { requestVersion++; helpId = recordId = undefined; afterRecord = false; }
++        overlayState = message;
++      }
++      return false;
++    }
++    if (isOverlayAgentOverlayResetMessage(message)) {
++      if (overlayVersions.admit(message) && overlayState?.sessionId === message.sessionId) {
++        requestVersion++; overlayState = undefined; helpId = recordId = undefined; afterRecord = false;
++      }
++      return false;
++    }
++    if (isHelpRequestMessage(message)) { requestVersion++; helpId = message.requestId; return false; }
++    if (isHelpCancelMessage(message)) { requestVersion++; if (helpId === message.requestId) helpId = undefined; return false; }
++    if (isRecordStartMessage(message)) { requestVersion++; recordId = message.requestId; afterRecord = false; return false; }
++    if (isRecordStopMessage(message) || isRecordCancelMessage(message)) {
++      requestVersion++;
++      if (recordId === message.requestId) { recordId = undefined; afterRecord = true; }
++      return false;
++    }
+     if (typeof message.lease !== "string") return false;
+     if (message.kind === COOPERATION_READ) {
+       if (retired.has(message.lease)) {
+@@ -751,6 +802,15 @@ export function attachCooperationCapture() {
+     return false;
+   };
+   chrome.runtime.onMessage.addListener(onMessage);
++  // A login can navigate or load an iframe while human help is already active.
++  // Restore that request once; a later cancel/state change invalidates the reply.
++  const restoreVersion = requestVersion;
++  void chrome.runtime.sendMessage({ type: HELP_QUERY }).then((result) => {
++    if (requestVersion === restoreVersion && result?.active && typeof result.request?.requestId === "string") helpId = result.request.requestId;
++  }).catch(() => {});
++  void chrome.runtime.sendMessage({ type: RECORD_QUERY }).then((result) => {
++    if (requestVersion === restoreVersion && result?.active && typeof result.requestId === "string") recordId = result.requestId;
++  }).catch(() => {});
+   void chrome.runtime.sendMessage({ kind: COOPERATION_READY }).catch(() => {});
+   return () => {
+     clearTimeout(timer);
+diff --git a/apps/extension/src/content/overlay-controller.ts b/apps/extension/src/content/overlay-controller.ts
+index 1bc8569..850fb1d 100644
+--- a/apps/extension/src/content/overlay-controller.ts
++++ b/apps/extension/src/content/overlay-controller.ts
+@@ -1,5 +1,6 @@
+ import type { ControllerInfo } from "@/lib/controller-info";
+ import type { OverlayMode } from "@/lib/overlay-bridge";
++import type { CooperationView } from "@/cooperation/types";
+ import type { BorrowRequestData } from "./BorrowConfirmationOverlay";
+ import type { HelpRequestData } from "./HelpRequestOverlay";
+ import type { RecordRequestData } from "./RecordOverlay";
+@@ -22,12 +23,18 @@ export interface OverlayState {
+   suppressControlAfterRecord: boolean;
+   /**
+    * User preference (chrome.storage, toggled from the popup): hide the
+-   * control hints — status card, orange glow, and the fallback input
+-   * blocker. Not session state; survives overlay resets.
++   * control hints — status card and glow. Hiding hints never grants page
++   * input. Not session state; survives overlay resets.
+    */
+   controlHintsHidden: boolean;
+ }
+ 
++/** Only explicit held ownership or a native help/record request grants page input. */
++export function shouldLockAgentInput(state: OverlayState, cooperation?: CooperationView): boolean {
++  return state.controlVisible && state.borrowRequests.length === 0 && !state.suppressControlAfterRecord &&
++    state.activeHelp === null && state.activeRecord === null && cooperation?.mode !== "held";
++}
++
+ type MutableOverlayState = Omit<OverlayState, "controlVisible">;
+ 
+ /**
+diff --git a/apps/extension/src/content/overlay.css b/apps/extension/src/content/overlay.css
+index 9e1882b..fa524e7 100644
+--- a/apps/extension/src/content/overlay.css
++++ b/apps/extension/src/content/overlay.css
+@@ -33,7 +33,7 @@
+   display: none !important;
+ }
+ 
+-/* Shared tabs keep native input available; only the card itself receives pointer input. */
++/* Page input is locked separately; controls remain reachable above the mask. */
+ .bsk-cooperation,
+ .bsk-cooperation-target {
+   --bsk-coop-orange: #f97316;
+@@ -54,11 +54,12 @@
+   display: flex;
+   flex-direction: column;
+   position: fixed;
+-  right: 20px;
++  left: 50%;
++  transform: translateX(-50%);
+   bottom: 20px;
+   z-index: 2147483647;
+   box-sizing: border-box;
+-  width: 300px;
++  width: 520px;
+   max-width: calc(100vw - 32px);
+   max-height: calc(100dvh - 32px);
+   overflow: hidden;
+@@ -332,7 +333,6 @@
+ }
+ @media (width <= 360px) {
+   .bsk-cooperation {
+-    right: 16px;
+     bottom: 16px;
+   }
+ }
 diff --git a/apps/extension/src/entrypoints/__tests__/background-overlays.test.ts b/apps/extension/src/entrypoints/__tests__/background-overlays.test.ts
 index f65b5e6..1979282 100644
 --- a/apps/extension/src/entrypoints/__tests__/background-overlays.test.ts
@@ -84,9 +728,36 @@ index f65b5e6..1979282 100644
        onCompleted: event(),
        onErrorOccurred: event(),
 diff --git a/apps/extension/src/entrypoints/__tests__/content-video-recovery.test.ts b/apps/extension/src/entrypoints/__tests__/content-video-recovery.test.ts
-index 5a2a4b7..e1308f9 100644
+index 5a2a4b7..3113942 100644
 --- a/apps/extension/src/entrypoints/__tests__/content-video-recovery.test.ts
 +++ b/apps/extension/src/entrypoints/__tests__/content-video-recovery.test.ts
+@@ -232,11 +232,11 @@ it.each([
+     if (remount) f.remount();
+     expect(f.visible("cooperation-toolbar")).toBe(false);
+     expect(f.visible("control-overlay-card")).toBe(false);
+-    expect(f.visible("control-overlay-blocker")).toBe(false);
++    expect(f.visible("control-overlay-blocker")).toBe(true);
+     expect(f.visible("control-overlay")).toBe(false);
+     expect(f.find(".bsk-cooperation-target")).toBeNull();
+     expect(document.querySelector("browser-skill-overlay")?.getAttribute("aria-hidden")).toBe(
+-      "true",
++      null,
+     );
+   }
+ });
+@@ -265,9 +265,9 @@ it("keeps fallback hints, input bypass and remounts on their existing lifecycle"
+   f.preference(true);
+   expect(f.visible("control-overlay-card")).toBe(false);
+   expect(f.visible("control-overlay")).toBe(false);
+-  expect(blocker()).toBeNull();
+-  expect(host().hasAttribute("data-bsk-overlay-surface")).toBe(false);
+-  expect(host().hasAttribute(INPUT_PASSTHROUGH_ATTR)).toBe(false);
++  expect(blocker()?.style.pointerEvents).toBe("none");
++  expect(host().hasAttribute("data-bsk-overlay-surface")).toBe(true);
++  expect(host().hasAttribute(INPUT_PASSTHROUGH_ATTR)).toBe(true);
+   f.remount();
+   f.preference(false);
+   expect(f.visible("control-overlay-card")).toBe(true);
 @@ -284,7 +284,7 @@ it("adds cooperation controls to the same card only after receiving real coopera
    await vi.advanceTimersByTimeAsync(1100);
    const card = f.find('[data-slot="control-overlay-card"]')!;
@@ -96,15 +767,30 @@ index 5a2a4b7..e1308f9 100644
    expect(card.getAttribute("data-mode")).toBeNull();
    f.send({ type: INPUT_PASSTHROUGH, phase: "begin", id: "claim-click" });
    vi.mocked(chrome.runtime.sendMessage).mockClear();
-@@ -294,7 +294,7 @@ it("adds cooperation controls to the same card only after receiving real coopera
+@@ -292,9 +292,9 @@ it("adds cooperation controls to the same card only after receiving real coopera
+   const state = cooperationState(2);
+   f.send({ ...state, cooperation: { ...state.cooperation, mode: "held", revision: 23 } });
    expect(f.find('[data-slot="cooperation-toolbar"]')).toBe(card);
-   expect(f.find('[data-slot="control-overlay"]')).toBe(glow);
+-  expect(f.find('[data-slot="control-overlay"]')).toBe(glow);
++  expect(f.find('[data-slot="control-overlay"]')).toBeNull();
    expect(card.getAttribute("data-mode")).toBe("held");
 -  expect(card.querySelectorAll("button")).toHaveLength(2);
 +  expect(card.querySelectorAll("button")).toHaveLength(4);
    expect(f.visible("control-overlay-blocker")).toBe(false);
    const host = document.querySelector("browser-skill-overlay")!;
    expect(host.hasAttribute("data-bsk-overlay-surface")).toBe(false);
+@@ -339,9 +339,10 @@ it("hides only control UI and restores the latest cooperation state when hints r
+   await vi.advanceTimersByTimeAsync(1100);
+   expect(f.visible("cooperation-toolbar")).toBe(true);
+   expect(f.visible("control-overlay")).toBe(true);
+-  expect(f.visible("control-overlay-blocker")).toBe(false);
++  expect(f.visible("control-overlay-blocker")).toBe(true);
+   expect(f.find(".bsk-cooperation-target")).not.toBeNull();
+   f.preference(true);
++  expect(f.visible("control-overlay-blocker")).toBe(true);
+   expect(f.visible("cooperation-toolbar")).toBe(false);
+   expect(f.visible("control-overlay")).toBe(false);
+   expect(f.find(".bsk-cooperation-target")).toBeNull();
 diff --git a/apps/extension/src/entrypoints/background.ts b/apps/extension/src/entrypoints/background.ts
 index 3809017..ad46818 100644
 --- a/apps/extension/src/entrypoints/background.ts
@@ -130,7 +816,7 @@ index 3809017..ad46818 100644
    let remoteEndpoint: RemoteEndpoint | null = null;
    let connectionPreferenceValid = false;
 diff --git a/apps/extension/src/entrypoints/content.ts b/apps/extension/src/entrypoints/content.ts
-index 613260c..e05d89b 100644
+index 613260c..3a1f2ab 100644
 --- a/apps/extension/src/entrypoints/content.ts
 +++ b/apps/extension/src/entrypoints/content.ts
 @@ -1,3 +1,5 @@
@@ -139,14 +825,71 @@ index 613260c..e05d89b 100644
  import { i18n } from "@browser-skill/i18n";
  import { I18nextProvider } from "@browser-skill/i18n/react";
  import React from "react";
-@@ -202,6 +204,7 @@ export default defineContentScript({
+@@ -10,7 +12,7 @@ import { HelpRequestOverlay } from "@/content/HelpRequestOverlay";
+ import { createHelpRequestData } from "@/content/help-request";
+ import { createInputPassthroughController } from "@/content/input-passthrough";
+ import overlayCss from "@/content/overlay.css?inline";
+-import { OverlayController, shouldShowAgentControlOverlay } from "@/content/overlay-controller";
++import { OverlayController, shouldShowAgentControlOverlay, shouldLockAgentInput } from "@/content/overlay-controller";
+ import { RecordOverlay } from "@/content/RecordOverlay";
+ import {
+   type CaptureSuppressAck,
+@@ -83,6 +85,15 @@ export default defineContentScript({
+     let overlayContainer: HTMLElement | null = null;
+     let activeAgentState: OverlayAgentStateMessage | null = null;
+     const overlayVersions = new OverlayVersionGate();
++    // Use actual extension roots; a page-supplied marker must not unlock input.
++    globalThis.dshIsControlEvent = (event) => !!overlayHost && event.composedPath().includes(overlayHost);
++    globalThis.dshFocusControl = () => {
++      if (globalThis.dshFocusControlDock?.()) return true;
++      const button = overlayHost?.shadowRoot?.querySelector<HTMLButtonElement>(".bsk-cooperation button:not(:disabled)");
++      if (!button || !button.getClientRects().length) return false;
++      button.focus({ preventScroll: true });
++      return true;
++    };
+     let hostLossReported = false;
+     let remountInProgress = false;
+     const videoOverlay = new VideoOverlayGate(
+@@ -191,21 +202,24 @@ export default defineContentScript({
+       const overlayState = overlays.snapshot();
+       const controlVisible =
+         videoOverlay.canRenderControl() && shouldShowAgentControlOverlay(overlayState);
+-      const controlOverlayVisible = controlVisible && !activeAgentState?.cooperation;
++      const inputLocked = videoOverlay.canRenderControl() &&
++        shouldLockAgentInput(overlayState, activeAgentState?.cooperation);
+       // Leaving control (including help/record UI) must not retain click leases.
+-      if (!controlOverlayVisible) inputPassthrough.reset();
++      if (!inputLocked) inputPassthrough.reset();
+       const interactiveOverlayVisible =
+         overlayState.borrowRequests.length > 0 ||
+         overlayState.activeHelp !== null ||
+         overlayState.activeRecord !== null;
+       const showInteractive = videoOverlay.canRenderInteractive(interactiveOverlayVisible);
        const cooperationState =
-         controlVisible && !interactiveOverlayVisible ? activeAgentState?.cooperation : undefined;
-       const cardVisible = controlOverlayVisible || !!cooperationState;
-+      globalThis.dshSetControlState?.({ active: cardVisible && (!cooperationState || ["ready", "acting", "syncing"].includes(cooperationState.mode)) });
-       setOverlayHostHiddenFromAccessibility(!interactiveOverlayVisible && !cardVisible);
+-        controlVisible && !interactiveOverlayVisible ? activeAgentState?.cooperation : undefined;
+-      const cardVisible = controlOverlayVisible || !!cooperationState;
+-      setOverlayHostHiddenFromAccessibility(!interactiveOverlayVisible && !cardVisible);
++        overlayState.controlVisible && !interactiveOverlayVisible ? activeAgentState?.cooperation : undefined;
++      const cardVisible = controlVisible && !interactiveOverlayVisible;
++      globalThis.dshSetTakeoverState?.({ active: videoOverlay.canRenderControl() && shouldLockAgentInput(overlayState), state: cooperationState });
++      globalThis.dshSetControlState?.({ active: inputLocked });
++      setOverlayHostHiddenFromAccessibility(!interactiveOverlayVisible && !cardVisible && !inputLocked);
        setOverlaySurfaceState(
-         controlOverlayVisible,
+-        controlOverlayVisible,
+-        controlOverlayVisible && overlayState.automationBypassCount === 0,
++        inputLocked,
++        inputLocked && overlayState.automationBypassCount === 0,
+       );
+       const root = reactRoot;
+       if (!root) return;
+@@ -230,6 +244,7 @@ export default defineContentScript({
+                 sessionId: overlayState.activeSessionId,
+                 controller: overlayState.controller,
+                 visible: cardVisible,
++                inputLocked,
+                 state: cooperationState,
+                 interrupting: overlayState.interrupting,
+                 automationBypass: overlayState.automationBypassCount > 0,
 diff --git a/apps/extension/src/session-manager/__tests__/agent-window.test.ts b/apps/extension/src/session-manager/__tests__/agent-window.test.ts
 index 8262e63..9b21e2f 100644
 --- a/apps/extension/src/session-manager/__tests__/agent-window.test.ts
@@ -319,7 +1062,7 @@ index 13f7a84..a925d97 100644
    const withShotDialogs = <T extends object>(result: T) =>
      deps.cdp ? attachDialogs(deps.cdp, target.tabId, dialogCursor, result) : result;
 diff --git a/apps/extension/src/tools/tabs.ts b/apps/extension/src/tools/tabs.ts
-index 1dc82c6..7c22693 100644
+index 1dc82c6..9847314 100644
 --- a/apps/extension/src/tools/tabs.ts
 +++ b/apps/extension/src/tools/tabs.ts
 @@ -1,4 +1,5 @@
@@ -332,7 +1075,7 @@ index 1dc82c6..7c22693 100644
    if (aborted(deps.signal, "tab_return")) {
      return { code: "cancelled", message: "tab_return aborted" };
    }
-+  if (ctx.agentCreatedTabs.has(params.tab_id)) {
++  if (ctx.agentCreatedTabs.has(params.tab_id) || (ctx.observedTabs?.has(params.tab_id) && !ctx.borrowedTabs.has(params.tab_id))) {
 +    return dshKeepTaskTab(ctx, params, deps, deps.agentOverlayReset ?? chromeAgentOverlayResetApi);
 +  }
    if (!ctx.borrowedTabs.has(params.tab_id)) {
@@ -351,7 +1094,7 @@ index 89a886b..54245dc 100644
      "types": ["chrome"],
      "baseUrl": ".",
 diff --git a/apps/extension/wxt.config.ts b/apps/extension/wxt.config.ts
-index 73b6f4c..d1c4837 100644
+index 73b6f4c..533dd39 100644
 --- a/apps/extension/wxt.config.ts
 +++ b/apps/extension/wxt.config.ts
 @@ -33,7 +33,8 @@ export default defineConfig({
@@ -360,7 +1103,7 @@ index 73b6f4c..d1c4837 100644
    manifest: {
 -    name: "BrowserSkill",
 +    name: "DeepSeek Harness",
-+    version_name: "0.4.2 DSH 1",
++    version_name: "0.4.2 DSH 3",
      description:
        "Let AI agents use your logged-in browser in a separate Agent Window—without interrupting your work. Powered by the bsk CLI.",
      // Flat debugger sessions are required to address out-of-process iframes.

@@ -8,7 +8,9 @@ async function dshKeepTaskTab(session, params, options, overlay) {
   const tabId = params.tab_id;
   let state = dshKeptTaskTabs.get(session);
   if (!state) dshKeptTaskTabs.set(session, state = { receipts: new Map() });
-  if (!session.agentCreatedTabs.has(tabId) && !state.receipts.has(tabId)) {
+  // Native cooperation protects human-touched task tabs by moving them from
+  // agentCreatedTabs to observedTabs. They still belong to this task window.
+  if ((!session.agentCreatedTabs.has(tabId) && !session.observedTabs?.has(tabId) && !state.receipts.has(tabId)) || session.borrowedTabs?.has(tabId)) {
     return { code: 'not_found', message: `tab_return: tab ${tabId} is not owned by this session` };
   }
   if (options.signal?.aborted) return { code: 'cancelled', message: 'tab_return aborted before preserving page' };

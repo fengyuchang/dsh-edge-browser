@@ -93,9 +93,21 @@ assert.equal(pages.get(8).windowId, 4, 'Keep an owned placeholder until native s
 assert((await keep(7)).preserved); assert.equal(windowCalls.length, 1, 'Retry must not create duplicate user windows');
 assert.deepEqual(released, [7]); assert.deepEqual(reset, [7]); assert.equal(pages.get(7).muted, false);
 assert.equal(pages.get(99).windowId, 88);
+// Native cooperation protects a user-touched task page as observed rather than
+// agent-created. Finishing it must still move the actual form and release control.
+session.observedTabs = new Set([9]);
+pages.set(9, { id: 9, windowId: 4, index: 1, formValue: 'human input' });
+assert((await keep(9)).preserved);
+assert.equal(pages.get(9).windowId, 90);
+assert.equal(pages.get(9).formValue, 'human input');
+assert(!session.observedTabs.has(9));
+assert.deepEqual(released, [7, 9]);
+session.borrowedTabs = new Map([[99, {}]]);
+session.observedTabs.add(99);
+assert.equal((await keep(99)).code, 'not_found', 'Borrowed tabs must use the original-window return path');
 const nativePath = ['./packages/browser-skill-dsh-plugin/lib/index.mjs', './offline/node_modules/@wxg-prc-cpg/browser-skill-dsh-plugin/lib/index.mjs'].map(file => new URL(file, import.meta.url)).find(file => fs.existsSync(file));
 assert(nativePath, 'Native browser plugin must be included');
 const native = fs.readFileSync(nativePath, 'utf8');
 assert(native.includes('finish: "session.finish"') && native.includes('armTaskCompletion(ctx, deps, parseBskJson)'));
 assert(fs.readFileSync(new URL('./source/browser-skill.patch', import.meta.url), 'utf8').includes('dshKeepTaskTab'));
-console.log('PASS: task finish keeps results/forms, closes only disposable task tabs, returns ownership, retries safely and isolates turn cleanup');
+console.log('PASS: task finish keeps results/forms including human-touched pages, closes only disposable task tabs, returns ownership, retries safely and isolates turn cleanup');

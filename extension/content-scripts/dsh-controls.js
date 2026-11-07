@@ -6,6 +6,7 @@
   let controlDock, activityDock, toast, sessionId, mode = 'hidden', hintsHidden = false;
   let controlCollapsed = false, activity, draft, rect, drag, viewport, regionText = '', elementContext, captureHidden = 0;
   let expiryTimer, toastTimer, busy = false;
+  let cooperation, takeoverActive = false, takeoverPending = false;
   const call = async message => {
     const result = await chrome.runtime.sendMessage(message);
     if (!result?.ok) throw new Error(result?.error || '扩展没有响应，请重试。');
@@ -19,9 +20,12 @@
   };
   const refresh = () => {
     if (!root) return;
-    const controlling = mode === 'control' && !!sessionId && !hintsHidden;
-    controlDock.hidden = !controlling || !controlCollapsed || !!draft || busy;
-    activityDock.hidden = !controlling || !globalThis.dshActivityCollapsed || !activity || !!draft || busy;
+    const controlling = mode === 'control' && !!sessionId;
+    controlDock.hidden = !takeoverActive || !(controlCollapsed || hintsHidden) || !!draft || busy;
+    const takeover = controlDock.querySelector('.takeover');
+    takeover.textContent = cooperation?.mode === 'held' ? '完成并交还 AI' : cooperation?.mode === 'yielding' ? '正在暂停 AI…' : '用户插入';
+    takeover.disabled = takeoverPending || !cooperation || cooperation.mode === 'yielding';
+    activityDock.hidden = !controlling || hintsHidden || !globalThis.dshActivityCollapsed || !activity || !!draft || busy;
     if (pill) pill.style.setProperty('display', controlCollapsed ? 'none' : 'flex', controlCollapsed ? 'important' : '');
     host.style.setProperty('display', captureHidden > 0 || document.hidden ? 'none' : 'block', 'important');
     activityDock.title = activity ? `DeepSeek · ${activity.label}，点击展开` : '展开步骤提示';
@@ -37,6 +41,11 @@
   globalThis.dshUpdateActivity = value => { activity = value; refresh(); };
   globalThis.dshBindControlPill = element => { pill = element; if (element) { mount(); raise(); refresh(); } };
   globalThis.dshIsAnnotationEvent = event => event.composedPath().includes(host);
+  globalThis.dshSetTakeoverState = value => { takeoverActive = value.active; cooperation = value.state; mount(); refresh(); };
+  globalThis.dshFocusControlDock = () => {
+    if (!controlDock || controlDock.hidden) return false;
+    controlDock.querySelector('button:not(:disabled)')?.focus({ preventScroll: true }); return true;
+  };
 
   function mount() {
     if (host?.isConnected) return;
@@ -69,7 +78,7 @@
       :host([data-bypass]) .editor,:host([data-bypass]) .editor *,:host([data-bypass]) .dock,:host([data-bypass]) .dock *{pointer-events:none!important}
       @media(max-width:600px){.card{top:auto;bottom:45px;width:calc(100vw - 30px);right:15px;padding:12px}textarea{height:75px}.hint{margin-bottom:6px}}
     </style>
-    <div class="dock control-dock" role="toolbar" aria-label="已收起的 DeepSeek 控制" hidden><button class="annotate" title="局部标注（默认 Alt+Shift+A）">▧ 标注</button><button class="expand-control">DeepSeek 控制 ▴</button><button class="stop">中断</button></div>
+    <div class="dock control-dock" role="toolbar" aria-label="已收起的 DeepSeek 控制" hidden><button class="takeover">用户插入</button><button class="annotate" title="局部标注（默认 Alt+Shift+A）">▧ 标注</button><button class="expand-control">DeepSeek 控制 ▴</button><button class="stop">中断</button></div>
     <div class="dock activity-dock" hidden><button class="expand-activity" aria-label="展开 DeepSeek 步骤提示">步骤 ◂</button></div>
     <div class="editor" hidden><img class="frozen" alt="用于框选标注的当前网页画面" draggable="false"><div class="stage"><div class="box" hidden><i class="resize"></i></div></div>
       <section class="card" role="dialog" aria-label="局部标注与建议"><div class="heading">局部标注<button class="close" aria-label="取消标注">×</button></div><p class="hint">拖动框选；框内可移动，右下角可调整大小。发送或取消后，DeepSeek 继续操作。</p><div class="target"></div><label for="dsh-note">你的建议</label><textarea id="dsh-note" maxlength="4000" aria-describedby="dsh-note-keys" placeholder="填写建议后按 Enter 发送，Shift+Enter 换行。"></textarea><p class="hint" id="dsh-note-keys">Enter 发送 · Shift+Enter 换行 · Esc 取消</p><div class="actions"><button class="redraw">重新框选</button><button class="send" disabled>✓ 发送建议</button></div><div class="status" role="status" aria-live="polite">正在准备当前画面…</div></section>
@@ -77,6 +86,17 @@
     editor = root.querySelector('.editor'); stage = root.querySelector('.stage'); box = root.querySelector('.box');
     note = root.querySelector('textarea'); status = root.querySelector('.status'); send = root.querySelector('.send'); frozen = root.querySelector('.frozen');
     controlDock = root.querySelector('.control-dock'); activityDock = root.querySelector('.activity-dock'); toast = root.querySelector('.toast');
+    // Preserve page focus until native hold/resume has accepted the transition.
+    controlDock.addEventListener('pointerdown', event => event.preventDefault());
+    root.querySelector('.takeover').onclick = async () => {
+      if (!cooperation || takeoverPending || cooperation.mode === 'yielding') return;
+      takeoverPending = true; refresh();
+      try {
+        const result = await chrome.runtime.sendMessage({ kind: 'cooperation.control', revision: cooperation.revision, action: cooperation.mode === 'held' ? 'resume' : 'hold' });
+        if (!result?.ok) throw new Error('控制状态已变化，请再点一次。页面仍保持原有控制权。');
+      } catch (error) { notify(error.message || '切换控制失败，请重试。'); }
+      finally { takeoverPending = false; refresh(); }
+    };
     root.querySelector('.annotate').onclick = () => globalThis.dshStartAnnotation();
     root.querySelector('.expand-control').onclick = () => globalThis.dshCollapseControl(false);
     root.querySelector('.expand-activity').onclick = () => globalThis.dshCollapseActivity(false);
