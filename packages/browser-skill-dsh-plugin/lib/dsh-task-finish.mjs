@@ -7,6 +7,7 @@ export async function finishBrowserTask(deps, args, exec, parse, { keepAll = fal
     throw new Error('keepTabIds must be an array of unique positive tab IDs from this task');
   }
   const sessionId = deps.registry.resolveForStop(args.session);
+  if (deps.dshUserWaits?.get(sessionId)) throw new Error('浏览器正在等待用户操作，不能结束任务；请等待用户交还后继续。');
   const requestId = deps.registry.requestFor(sessionId);
   let finishes = pending.get(deps);
   if (!finishes) pending.set(deps, finishes = new Map());
@@ -59,7 +60,11 @@ export function armTaskCompletion(ctx, deps, parse) {
     for (const id of deps.registry.ownedByDsh(agent.id)) {
       if (!eligible()) break;
       if (deps.registry.dshOwnersOf(id)[0] !== agent.id) continue;
-      try { await finishBrowserTask(deps, { session: id }, { signal }, parse, { keepAll: true, eligible }); }
+      if (deps.dshUserWaits?.get(id)) continue;
+      const taskEligible = () => eligible() && !deps.dshUserWaits?.get(id);
+      // Native stop preserves human-touched/borrowed pages and guarded forms.
+      // Temporary AI-created pages must not all become permanent result tabs.
+      try { await finishBrowserTask(deps, { session: id }, { signal }, parse, { eligible: taskEligible }); }
       catch (error) { console.warn('[browser-skill] Task completion cleanup failed; pages retained:', error.message); }
     }
   };

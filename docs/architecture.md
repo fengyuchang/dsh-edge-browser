@@ -27,7 +27,11 @@ flowchart LR
 
 `harness/dsh-task-finish.mjs` 提供 `bsk_session(action=finish, keepTabIds)` 和完成钩子。模型决定保留的任务页，经标签归还接口转移成普通页面，再停止任务窗口；其他任务创建页关闭，借入的原有标签按上游流程归还。扩展 `dsh-task-finish.js` 在原生权限校验后扩展 `tab_return`，保留同一个标签及未保存状态，并释放 CDP、重置浮层与临时静音。转移失败不执行停止，保留部分回执以便重试。
 
-`agent/turn-stopping` 在正常结束前兜底；`agent/status=idle` 覆盖取消与错误结束。两者只清理直接拥有者的浏览器，不处理仍在工作的子 Agent 或其他聊天。兜底保留所有页面，避免在没有模型判断时丢失未保存数据；旧 idle 事件遇到新轮次会跳过。
+`agent/turn-stopping` 在正常结束前兜底；`agent/status=idle` 覆盖取消与错误结束。两者只清理直接拥有者的浏览器，不处理仍在工作的子 Agent 或其他聊天；旧 idle 事件遇到新轮次会跳过。待用户操作的工具调用按会话计数，等待中拒绝 finish 并跳过兜底。求助超时或导航中断也保护该页面。
+
+没有显式 finish 时，原生 stop 关闭临时任务页。停止前并行检查任务创建页的各 frame 和 Shadow DOM，只返回是否需要保留，不回传输入内容。未提交表单、人工操作页、读取失败或超时保留；借入标签仍走原生归还。搜索框不被当作未提交表单。
+
+`dsh-task-groups.js` 在当前扩展 worker 中记录插件创建的窗口。只有所属任务已经结束、未聚焦的普通插件窗口可以原子预留给新任务；已有结果标签只作路由保护，不授予新任务控制权。普通窗口不登记；worker 重启后不猜测历史窗口归属。启动失败仅删除新建任务标签，保留旧结果。
 
 - `harness/` 是可读定制 helper，`packages/browser-skill-dsh-plugin/lib/` 为已接入的完整插件。源码检查保证两份 helper 和内置技能相同。
 - `extension/` 包含可直接加载的完整发行代码；上游打包文件保留原样结构，定制逻辑集中在可读脚本。上游完整 TypeScript 编译工具链见 Tencent/BrowserSkill。
@@ -55,4 +59,6 @@ node annotation-ui-check.mjs --browser YOUR_INSTANCE_ID
 
 `source/upstream.json` 固定上游提交；`source/browser-skill.patch` 保存原生接入点改动。`scripts/build-source.mjs` 应用补丁并复制可读适配器，通过 WXT/tsdown 构建，不修改压缩 bundle。`source-build.json` 记录输入与关键产物 SHA-256；源码变化后必须重建。
 
-模型工具继续使用上游 CLI/队列/权限模型。只有给人看的预览使用 `harness/dsh-preview.mjs` 的受限本地 IPC：先校验协议与本地管道，限于显式 `dsh_preview` 截图，按会话取消、限时限长并校验响应。它复用原生归属/文档身份检查，不隐藏控制浮层；模型截图保持原来的干净截图路径。鼠标视觉消息异步转发，合并连续移动，不合并按下/释放；视觉消息失败不阻塞原生命令。
+模型工具继续使用上游 CLI/队列/权限模型。只有给人看的预览使用 `harness/dsh-preview.mjs` 的受限本地 IPC：先校验协议与本地管道，限于显式 `dsh_preview` 截图，按会话取消、限时限长并校验响应。它复用原生归属/文档身份检查，不隐藏控制浮层。dsh.4 的普通视口、元素与 Canvas 截图也不再隐藏浮层，避免截图造成屏幕闪烁；工具结果明确标记 DeepSeek 控件属于工具界面。全页干净导出与局部标注仍有独立的隐藏事务。鼠标视觉消息异步转发，合并连续移动，不合并按下/释放；视觉消息失败不阻塞原生命令。
+
+普通 DOM 点击优先使用原有、有限时的点击穿透许可，减少重复探测和整层 React 状态切换。按下前仍复核目标、文档与命中；上传、下载保留原有独立清理流程。推荐模型使用 step 和返回的上下文，见 [性能说明](performance-0.4.2-dsh.4.md)。

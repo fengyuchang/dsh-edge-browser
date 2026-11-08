@@ -4,7 +4,7 @@ Visible, background control of your everyday Edge browser for DeepSeek Harness.
 
 [中文](README.md) · [Downloads](https://github.com/fengyuchang/dsh-edge-browser/releases/latest) · [Project site](https://fengyuchang.github.io/dsh-edge-browser/)
 
-**Latest: 0.4.2-dsh.3, 2026-11-07.** Restores bottom-center controls and exclusive AI page control. Choose “用户插入” to pause AI and take over, then “完成并交还 AI” to return control. Login/help requests still unlock the page. Collapsing or hiding hints keeps input locked and leaves takeover available. Reload the Edge extension after current tasks finish. See the [changelog](docs/changelog.md).
+**Latest: 0.4.2-dsh.4, 2026-11-08.** Compact bottom-center controls with expandable chat details. Routine click-and-screenshot inspection no longer hides the glow or toolbar. Manual help explicitly waits for the user; completion closes disposable task tabs while protecting human work and unsubmitted forms. New tasks may reuse only idle background windows recorded by this plugin. See the [changelog](docs/changelog.md) and [measurements](docs/performance-0.4.2-dsh.4.md).
 
 Built on Tencent BrowserSkill 0.4.2. This community customization reuses the
 browser's signed-in sessions, controls task tabs without moving the system mouse,
@@ -34,8 +34,11 @@ not a continuous screen recording. The guide also includes native-operation stil
 - Task-tab muting, native Edge debugger banner, tab groups and collapsible controls.
 - Task completion releases debugger/control/effects. The model keeps useful result
   pages and unsaved forms and closes disposable created tabs. Borrowed originals
-  return to their origin. Turn-end/cancellation cleanup conservatively keeps pages
-  if the model omitted its decision, without touching other chats' tasks.
+  return to their origin. Turn-end/cancellation cleanup closes temporary created
+  tabs, protecting human-touched pages, unsubmitted forms and unknown content.
+  Pending human help blocks completion; other chats' tasks remain isolated.
+- Reuse only idle, unfocused plugin windows. Existing result tabs stay unclaimed
+  and in place; ordinary Edge windows are never automatically taken over.
 
 ## Install
 

@@ -434,6 +434,8 @@ interface ToolDeps {
   /** Per-session FIFO: the daemon rejects a second command while one is unfinished. */
   queue: KeyedExecutor;
   starts?: SessionStarts;
+  /** Human handoffs stay live; idle/turn cleanup must not end a pending wait. */
+  dshUserWaits?: Map<string, number>;
 }
 //#endregion
 //#region src/archive-cleanup.d.ts

@@ -25,7 +25,7 @@ function copy(from, to) {
     }
   } else { fs.mkdirSync(path.dirname(to), { recursive: true }); fs.copyFileSync(from, to); }
 }
-for (const name of ['extension', 'extension-official', 'harness', 'source', 'source-build.json', 'scripts', 'provenance.json', 'verify.mjs', 'preview-check.mjs', 'annotation-check.mjs', 'annotation-client-check.mjs', 'notice-check.mjs', 'task-finish-check.mjs', 'task-finish-live-check.mjs', 'annotation-ui-check.mjs', 'annotation-scope-live-check.mjs']) copy(path.join(source, name), path.join(output, name));
+for (const name of ['extension', 'extension-official', 'harness', 'source', 'source-build.json', 'scripts', 'provenance.json', 'verify.mjs', 'preview-check.mjs', 'annotation-check.mjs', 'annotation-client-check.mjs', 'notice-check.mjs', 'task-finish-check.mjs', 'window-pool-check.mjs', 'task-finish-live-check.mjs', 'annotation-ui-check.mjs', 'annotation-scope-live-check.mjs']) copy(path.join(source, name), path.join(output, name));
 copy(bsk, path.join(output, 'bin/bsk.exe'));
 copy(process.execPath, path.join(output, 'runtime/node.exe'));
 copy(path.join(source, 'licenses'), path.join(output, 'LICENSES'));

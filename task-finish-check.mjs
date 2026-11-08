@@ -45,6 +45,14 @@ await finishBrowserTask(deps, { session: 'retry', keepTabIds: [21, 22] }, exec, 
 assert.equal(calls.filter(call => call[0] === 'tab' && call[1] === 'return' && call[2] === '21').length, 1);
 const ctx = { on: (name, callback) => { hooks.set(name, callback); return () => hooks.delete(name); } };
 const dispose = armTaskCompletion(ctx, deps, parse);
+seed('waiting', [61]); deps.dshUserWaits = new Map([['waiting', 1]]);
+await hooks.get('agent/turn-stopping')({ agent: { id: 'owner' }, signal: exec.signal });
+assert(rows.has('waiting') && !rows.get('waiting').cleanup, 'Pending human help must not finish or close the browser');
+await assert.rejects(finishBrowserTask(deps, { session: 'waiting' }, exec, parse), /等待用户操作/);
+deps.dshUserWaits.clear();
+await hooks.get('agent/turn-stopping')({ agent: { id: 'owner' }, signal: exec.signal });
+assert(!rows.has('waiting'));
+assert(!calls.some(call => call[0] === 'tab' && call[1] === 'return' && call[2] === '61'), 'Fallback must not preserve every temporary task tab');
 seed('normal', [31, 32]); seed('child', [41], ['child-agent', 'owner']);
 await hooks.get('agent/turn-stopping')({ agent: { id: 'owner' }, signal: exec.signal });
 assert(!rows.has('normal')); assert(rows.has('child'), 'A parent finishing must leave a child-owned active browser alone');
@@ -69,6 +77,7 @@ const options = { cdp: { releaseSessionTab: async (_id, tab) => { if (releaseFai
 const overlay = { resetAgentOverlays: async tab => reset.push(tab) };
 const classic = text => text.replace(/^import .*;\r?\n/gm, '').replace(/^export \{.*\};?\r?$/gm, '').replace(/^export /gm, '');
 const sandbox = vm.createContext({ console, expectedTabMoves:{run: async (_move, run)=>run()}, dshVisualStates: new Map([[7, {}]]), dshPointerPositions: new Map([[7, {}]]),
+  dshRememberResultWindow() {},
   dshRestoreTabAudio: async page => { page.muted = false; },
   chrome: {
     tabs: {
@@ -105,6 +114,30 @@ assert.deepEqual(released, [7, 9]);
 session.borrowedTabs = new Map([[99, {}]]);
 session.observedTabs.add(99);
 assert.equal((await keep(99)).code, 'not_found', 'Borrowed tabs must use the original-window return path');
+
+// Cleanup must distinguish a search from unfinished work, and keep unknown frames.
+const field = props => ({ tagName: 'INPUT', type: 'text', value: '', name: '', closest: () => null, ...props });
+const documentWith = fields => ({ readyState: 'complete', querySelectorAll: query => query === '*' ? [] : fields });
+sandbox.document = documentWith([field({ type: 'search', value: 'finished search' })]);
+assert.equal(vm.runInContext('dshPageNeedsPreserving()', sandbox), false);
+sandbox.document = documentWith([field({ value: 'unsent draft' })]);
+assert.equal(vm.runInContext('dshPageNeedsPreserving()', sandbox), true);
+sandbox.document = documentWith([field({ type: 'checkbox', checked: true, defaultChecked: false })]);
+assert.equal(vm.runInContext('dshPageNeedsPreserving()', sandbox), true);
+sandbox.document = { ...documentWith([]), readyState: 'loading' };
+assert.equal(vm.runInContext('dshPageNeedsPreserving()', sandbox), true);
+Object.assign(sandbox, { setTimeout, clearTimeout, guarded: { agentWindowId: 4, agentCreatedTabs: new Set([101, 102, 103, 104, 105]), observedTabs: new Set() } });
+for (const id of [101, 102, 103, 104, 105]) pages.set(id, { id, windowId: id === 104 ? 88 : 4, url: id === 105 ? 'about:blank' : 'https://example.com/form' });
+const inspected = [];
+sandbox.chrome.scripting = { executeScript: async ({ target }) => {
+  inspected.push(target.tabId);
+  if (target.tabId === 103) throw new Error('frame unavailable');
+  return target.tabId === 102 ? [{ result: false }, { result: true }] : [{ result: false }];
+} };
+await vm.runInContext('dshProtectTaskForms(guarded)', sandbox);
+assert.deepEqual([...sandbox.guarded.observedTabs].sort(), [102, 103]);
+assert.deepEqual([...sandbox.guarded.agentCreatedTabs].sort(), [101, 104, 105]);
+assert.deepEqual(inspected.sort(), [101, 102, 103], 'Only task-window content may be inspected');
 const nativePath = ['./packages/browser-skill-dsh-plugin/lib/index.mjs', './offline/node_modules/@wxg-prc-cpg/browser-skill-dsh-plugin/lib/index.mjs'].map(file => new URL(file, import.meta.url)).find(file => fs.existsSync(file));
 assert(nativePath, 'Native browser plugin must be included');
 const native = fs.readFileSync(nativePath, 'utf8');

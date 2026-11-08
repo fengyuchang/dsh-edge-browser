@@ -3,6 +3,63 @@
 const dshTaskGroups = new Map();
 const dshTaskWindows = new Set();
 const dshMutedTabs = new Set();
+// ponytail: reuse only windows recorded by this worker; after restart, create
+// a fresh window rather than infer ownership from ordinary browser tab titles.
+const dshIdleTaskWindows = new Set(), dshReservedTaskWindows = new Set();
+const dshResultWindows = new Map(), dshReusedWindows = new Map();
+const dshRetainedIdleTabs = new Map();
+function dshIsRetainedIdleTab(windowId, tabId) { return dshRetainedIdleTabs.get(windowId)?.has(tabId) === true; }
+function dshRememberResultWindow(windowId, sessionId) { dshResultWindows.set(windowId, sessionId); }
+
+function dshSyncTaskWindows(sessions) {
+  const liveWindows = new Set(sessions.map(s => s.agentWindowId)), liveSessions = new Set(sessions.map(s => s.sessionId));
+  for (const id of liveWindows) { dshReservedTaskWindows.delete(id); dshIdleTaskWindows.delete(id); }
+  for (const id of [...dshTaskWindows]) {
+    if (liveWindows.has(id) || dshReservedTaskWindows.has(id)) continue;
+    dshTaskWindows.delete(id); dshIdleTaskWindows.add(id); dshReusedWindows.delete(id); dshRetainedIdleTabs.delete(id);
+    const groupId = dshTaskGroups.get(id); dshTaskGroups.delete(id);
+    void chrome.tabs.query({ windowId: id }).then(async tabs => {
+      if (dshTaskWindows.has(id)) return;
+      const grouped = tabs.filter(tab => tab.groupId === groupId).map(tab => tab.id);
+      if (grouped.length) await chrome.tabs.ungroup(grouped).catch(() => {});
+      await Promise.all(tabs.map(dshRestoreTabAudio));
+    }).catch(() => {});
+  }
+  for (const [id, owner] of dshResultWindows) if (!liveSessions.has(owner) && !liveWindows.has(id) && !dshReservedTaskWindows.has(id)) dshIdleTaskWindows.add(id);
+}
+
+async function dshAcquireIdleTaskWindow(url) {
+  for (const id of [...dshIdleTaskWindows]) {
+    dshIdleTaskWindows.delete(id); dshResultWindows.delete(id); dshReservedTaskWindows.add(id);
+    try {
+      const window = await chrome.windows.get(id);
+      if (window.focused || window.incognito || window.type !== 'normal') { dshIdleTaskWindows.add(id); continue; }
+      const retained = await chrome.tabs.query({ windowId: id });
+      if ((await chrome.windows.get(id)).focused) { dshIdleTaskWindows.add(id); continue; }
+      dshRetainedIdleTabs.set(id, new Set(retained.map(tab => tab.id)));
+      dshTaskWindows.add(id);
+      const tab = await chrome.tabs.create({ windowId: id, url, active: true });
+      dshReusedWindows.set(id, new Set([tab.id]));
+      return { ...window, tabs: [tab] }; // Existing result tabs are never claimed.
+    } catch { dshTaskWindows.delete(id); dshReusedWindows.delete(id); dshRetainedIdleTabs.delete(id); }
+    finally { if (!dshReusedWindows.has(id)) dshReservedTaskWindows.delete(id); }
+  }
+  return null;
+}
+
+async function dshRemoveTaskWindow(windowId) {
+  const owned = dshReusedWindows.get(windowId);
+  if (owned) {
+    const tabs = await chrome.tabs.query({ windowId });
+    if (tabs.some(tab => !owned.has(tab.id))) {
+      // Failed initialization must not close results already in a reused window.
+      for (const tab of tabs) if (owned.has(tab.id)) await chrome.tabs.remove(tab.id);
+      dshReservedTaskWindows.delete(windowId); dshReusedWindows.delete(windowId); dshRetainedIdleTabs.delete(windowId);
+      dshTaskWindows.delete(windowId); dshIdleTaskWindows.add(windowId); return;
+    }
+  }
+  await chrome.windows.remove(windowId);
+}
 
 async function dshMuteTaskTab(tab) {
   if (!dshTaskWindows.has(tab.windowId) || !Number.isInteger(tab.id) || tab.mutedInfo?.muted) return;
@@ -25,6 +82,7 @@ async function dshRestoreTabAudio(tab) {
 }
 
 async function dshGroupAgentWindow(window) {
+  dshReservedTaskWindows.add(window.id);
   dshTaskWindows.add(window.id);
   await Promise.all((window.tabs || []).map(tab => dshMuteTaskTab({ ...tab, windowId: window.id })));
   try {
@@ -59,6 +117,7 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
 });
 chrome.tabs.onRemoved.addListener(tabId => dshMutedTabs.delete(tabId));
 chrome.windows.onRemoved.addListener(windowId => {
+  dshIdleTaskWindows.delete(windowId); dshReservedTaskWindows.delete(windowId); dshResultWindows.delete(windowId); dshReusedWindows.delete(windowId); dshRetainedIdleTabs.delete(windowId);
   dshTaskGroups.delete(windowId);
   dshTaskWindows.delete(windowId);
 });
@@ -67,4 +126,4 @@ chrome.tabGroups.onRemoved.addListener(group => {
 });
 }
 
-export { dshGroupAgentWindow, dshRestoreTabAudio, dshInstallTaskGroups };
+export { dshGroupAgentWindow, dshRestoreTabAudio, dshInstallTaskGroups, dshRememberResultWindow, dshSyncTaskWindows, dshAcquireIdleTaskWindow, dshRemoveTaskWindow, dshIsRetainedIdleTab };

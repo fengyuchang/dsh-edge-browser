@@ -1,9 +1,58 @@
 import { expectedTabMoves } from '@/session-manager/tab-moves';
 import { dshVisualStates, dshPointerPositions } from './dsh-visual-activity.js';
-import { dshRestoreTabAudio } from './dsh-task-groups.js';
+import { dshRestoreTabAudio, dshRememberResultWindow } from './dsh-task-groups.js';
 // Preserve a task-created tab as an ordinary page using the native tab-return seam.
 // Borrowed user tabs always follow upstream's original-window return path.
 const dshKeptTaskTabs = new WeakMap();
+
+// Runs only at task cleanup. Return a boolean, never field values or secrets.
+function dshPageNeedsPreserving() {
+  if (document.readyState === 'loading') return true;
+  const visit = root => {
+    for (const el of root.querySelectorAll('input,textarea,select,[contenteditable]')) {
+      if (el.disabled || el.readOnly) continue;
+      if (el.isContentEditable && el.textContent.trim()) return true;
+      const type = String(el.type || '').toLowerCase();
+      if (['hidden', 'submit', 'button', 'reset', 'image', 'range', 'color', 'search'].includes(type) || el.closest('[role="search"]')) continue;
+      let search = false;
+      try { search = /^(q|query|search|keyword)$/i.test(el.name) && /(^|\/)search(\/|$)/i.test(new URL(el.form?.action || '', location.href).pathname); } catch {}
+      if (search) continue;
+      if (type === 'checkbox' || type === 'radio') { if (el.checked !== el.defaultChecked) return true; continue; }
+      if (el.tagName === 'SELECT') {
+        const options = [...el.options], hasDefault = options.some(option => option.defaultSelected);
+        if (options.some((option, index) => option.selected !== (option.defaultSelected || (!hasDefault && !el.multiple && index === 0)))) return true;
+        continue;
+      }
+      if (type === 'file') { if (el.files?.length) return true; continue; }
+      if (typeof el.value === 'string' && el.value.trim()) return true;
+    }
+    for (const el of root.querySelectorAll('*')) {
+      if (el.matches('browser-skill-overlay,[data-bsk-overlay]')) continue;
+      const shadow = el.shadowRoot || globalThis.chrome?.dom?.openOrClosedShadowRoot?.(el);
+      if (shadow && visit(shadow)) return true;
+    }
+    return false;
+  };
+  return visit(document);
+}
+
+async function dshProtectTaskForms(session) {
+  await Promise.all([...session.agentCreatedTabs].map(async tabId => {
+    let timer, preserve = true;
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab.windowId !== session.agentWindowId) return;
+      if (tab.url === 'about:blank') return;
+      const frames = await Promise.race([
+        chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: dshPageNeedsPreserving, injectImmediately: true }),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Form check timed out')), 1500); }),
+      ]);
+      preserve = !frames?.length || frames.some(frame => frame.result !== false);
+    } catch { /* Unknown content stays open; cleanup may never discard a form blindly. */ }
+    finally { clearTimeout(timer); }
+    if (preserve && session.agentCreatedTabs.delete(tabId)) (session.observedTabs ??= new Set()).add(tabId);
+  }));
+}
 async function dshKeepTaskTab(session, params, options, overlay) {
   const tabId = params.tab_id;
   let state = dshKeptTaskTabs.get(session);
@@ -32,12 +81,14 @@ async function dshKeepTaskTab(session, params, options, overlay) {
       if (state.windowId === undefined) {
         const window = await chrome.windows.create({ url: 'about:blank', focused: false, state: 'minimized', type: 'normal' });
         state.windowId = window.id;
+        dshRememberResultWindow(window.id, session.sessionId);
         state.placeholderId = window.tabs?.[0]?.id;
         await chrome.windows.update(state.windowId, { state: 'minimized' }).catch(() => {});
       }
       await expectedTabMoves.run({ tabId, fromWindowId: tab.windowId, toWindowId: state.windowId },
         () => chrome.tabs.move(tabId, { windowId: state.windowId, index: -1 }));
       tab = await chrome.tabs.get(tabId);
+      await chrome.windows.update(state.windowId, { state: 'minimized' }).catch(() => {});
       receipt = { tab_id: tabId, returned_to_window_id: tab.windowId, returned_to_index: tab.index, preserved: true };
       state.receipts.set(tabId, receipt); // Keep retries safe if release fails after the move.
       session.agentCreatedTabs.delete(tabId);
@@ -58,4 +109,4 @@ async function dshKeepTaskTab(session, params, options, overlay) {
   }
 }
 
-export { dshKeepTaskTab };
+export { dshKeepTaskTab, dshProtectTaskForms, dshPageNeedsPreserving };

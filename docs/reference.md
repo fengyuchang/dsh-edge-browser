@@ -15,3 +15,7 @@
 当前尚未实现：Harness `@` 菜单选已有标签、另一套 summary/handle 阅读协议、可中断小批量操作，以及 WebMCP 网站工具发现。它们需要各自的协议与界面验证，不在当前版本中宣传为已有功能。
 
 适配的客户端设计保留原 MIT 署名，见 [归属声明](../THIRD_PARTY_NOTICES.md)。
+
+## dsh-pilot 的调用速度设计
+
+0.4.2-dsh.4 对照 [momasiku/dsh-pilot](https://github.com/momasiku/dsh-pilot) 的官方说明与本机 0.7.2 发行代码，研究常驻 worker、组合动作和未变化图像去重。本项目采用减少重复调用与按需截图的思路，继续使用原生浏览器归属、目标和取消检查，没有复制其桌面输入实现。具体范围与本机测量见 [性能说明](performance-0.4.2-dsh.4.md)。

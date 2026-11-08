@@ -27,5 +27,6 @@ await import(pathToFileURL(path.join(root, 'annotation-check.mjs')));
 await import(pathToFileURL(path.join(root, 'annotation-client-check.mjs')));
 await import(pathToFileURL(path.join(root, 'notice-check.mjs')));
 await import(pathToFileURL(path.join(root, 'task-finish-check.mjs')));
+await import(pathToFileURL(path.join(root, 'window-pool-check.mjs')));
 await import(pathToFileURL(path.join(root, 'preview-check.mjs')));
 console.log(`PASS: ${manifest.files.length} files, offline plugin imports, bundled CLI and extension checks`);
