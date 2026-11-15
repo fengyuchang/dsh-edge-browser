@@ -6,6 +6,7 @@ export async function executeScopedBrowserAction(deps, toolName, args, exec, run
   const records = [...(deps.starts?.journal?.records?.values() ?? [])].filter(record => record.owners.includes(owner));
   const sessionTool = toolName === 'bsk_session';
   const refuse = () => { throw new Error('此浏览器任务不属于当前聊天。请在本会话新建浏览器任务；不会使用其他会话的窗口。'); };
+  if (sessionTool && args.action === 'diagnose' && args.session === undefined) return run(args);
   if (sessionTool && args.action === 'start') return run({ ...args, agentName: args.agentName ?? 'DeepSeek Harness', project: args.project ?? ('聊天 ' + owner.slice(-8)) });
   if (sessionTool && args.action === 'list') {
     const result = await run(args);

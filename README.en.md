@@ -4,7 +4,7 @@ Visible, background control of your everyday Edge browser for DeepSeek Harness.
 
 [中文](README.md) · [Downloads](https://github.com/fengyuchang/dsh-edge-browser/releases/latest) · [Project site](https://fengyuchang.github.io/dsh-edge-browser/)
 
-**Latest: 0.4.2-dsh.4, 2026-11-08.** Compact bottom-center controls with expandable chat details. Routine click-and-screenshot inspection no longer hides the glow or toolbar. Manual help explicitly waits for the user; completion closes disposable task tabs while protecting human work and unsubmitted forms. New tasks may reuse only idle background windows recorded by this plugin. See the [changelog](docs/changelog.md) and [measurements](docs/performance-0.4.2-dsh.4.md).
+**Latest: 0.4.2-dsh.5, 2026-11-15.** Exact semantic locators, bounded batches of up to eight decided actions, runtime/file/CLI/extension diagnostics and owned command timings. Native ownership and target checks remain on every action. Also fixes disposable SVG-bearing pages being conservatively retained by the form guard. See the [changelog](docs/changelog.md) and [features and agent-browser comparison](docs/automation-0.4.2-dsh.5.md).
 
 Built on Tencent BrowserSkill 0.4.2. This community customization reuses the
 browser's signed-in sessions, controls task tabs without moving the system mouse,

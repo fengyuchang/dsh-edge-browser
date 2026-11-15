@@ -838,6 +838,26 @@ index 02d307c..b1fbd4c 100644
          if (outcome === "continued" || outcome === "completed") {
            this.preserve(state);
            await this.deps.resumeFrames(state.tabId, state.lease, state.frameRepairs);
+diff --git a/apps/extension/src/debug/capabilities.ts b/apps/extension/src/debug/capabilities.ts
+index aa0f904..7f2f9c1 100644
+--- a/apps/extension/src/debug/capabilities.ts
++++ b/apps/extension/src/debug/capabilities.ts
+@@ -3,6 +3,7 @@ import { JOURNAL_BYTES, JOURNAL_PINS, JOURNAL_REQUESTS } from "./journal";
+ 
+ declare const __BSK_EXT_BUILD__: string;
+ declare const __BSK_EXT_VERSION__: string;
++declare const __DSH_INTEGRATION_VERSION__: string;
+ export const DEBUG_ACTIONS = [
+   "performance",
+   "aggregate",
+@@ -53,6 +54,7 @@ export function debugCapabilities(persistent = true): Record<string, unknown> {
+   return {
+     schema_version: 1,
+     extension: {
++      integration_version: typeof __DSH_INTEGRATION_VERSION__ === "string" ? __DSH_INTEGRATION_VERSION__ : "unknown",
+       version: typeof __BSK_EXT_VERSION__ === "string" ? __BSK_EXT_VERSION__ : "unknown",
+       build: typeof __BSK_EXT_BUILD__ === "string" ? __BSK_EXT_BUILD__ : "unknown",
+     },
 diff --git a/apps/extension/src/entrypoints/__tests__/background-overlays.test.ts b/apps/extension/src/entrypoints/__tests__/background-overlays.test.ts
 index f65b5e6..1979282 100644
 --- a/apps/extension/src/entrypoints/__tests__/background-overlays.test.ts
@@ -1420,6 +1440,55 @@ index 7d8e73d..7955e02 100644
 +  expect(cdp.send).toHaveBeenCalledWith(7, "Page.captureScreenshot", expect.any(Object));
    expect(capture).not.toHaveBeenCalled();
  });
+diff --git a/apps/extension/src/tools/__tests__/semantic-selector.test.ts b/apps/extension/src/tools/__tests__/semantic-selector.test.ts
+new file mode 100644
+index 0000000..4d31a31
+--- /dev/null
++++ b/apps/extension/src/tools/__tests__/semantic-selector.test.ts
+@@ -0,0 +1,43 @@
++import { afterEach, describe, expect, it, vi } from "vitest";
++import { parseSemanticSelector, resolveSemanticSelector } from "../semantic-selector";
++import type { CdpRunner } from "../shared";
++
++afterEach(() => { vi.restoreAllMocks(); document.body.innerHTML = ""; });
++describe("semantic selectors", () => {
++  it("parses exact literal names without treating data as code", () => {
++    expect(parseSemanticSelector('role=button[name="提交"]')).toEqual({ kind: "role", role: "button", value: "提交" });
++    expect(parseSemanticSelector('text="a\\\"b"')).toEqual({ kind: "text", value: 'a"b' });
++    expect(parseSemanticSelector("#submit")).toBeNull();
++    expect(() => parseSemanticSelector('role=button[name="bad"][onclick=x]')).toThrow();
++    expect(() => parseSemanticSelector("label=")).toThrow();
++  });
++  it("uses browser accessibility names, excludes ignored nodes and refuses ambiguity", async () => {
++    let nodes = [{ ignored: true, backendDOMNodeId: 9, role: { value: "button" }, name: { value: "Go" } }, { backendDOMNodeId: 2, role: { value: "button" }, name: { value: "Go" } }];
++    const send = vi.fn(async () => ({ nodes })), cdp = { send } as unknown as CdpRunner;
++    expect(await resolveSemanticSelector(cdp, 1, 7, 'role=button[name="Go"]')).toMatchObject({ backendNodeId: 2, cdpTarget: { tabId: 1 } });
++    expect(send).toHaveBeenCalledWith(1, "Accessibility.queryAXTree", { nodeId: 7, role: "button", accessibleName: "Go" });
++    nodes = [...nodes, { backendDOMNodeId: 3, role: { value: "button" }, name: { value: "Go" } }];
++    expect(await resolveSemanticSelector(cdp, 1, 7, "role=button[name=Go]")).toMatchObject({ code: "invalid_params" });
++  });
++  it("label lookup selects the associated control rather than its static label text", async () => {
++    const cdp = { send: async () => ({ nodes: [{ backendDOMNodeId: 2, role: { value: "StaticText" }, name: { value: "Email" } }, { backendDOMNodeId: 3, role: { value: "textbox" }, name: { value: "Email" } }] }) } as unknown as CdpRunner;
++    expect(await resolveSemanticSelector(cdp, 1, 7, "label=Email")).toMatchObject({ backendNodeId: 3 });
++  });
++  it("literal DOM lookup ignores hidden duplicates and releases only its own object", async () => {
++    document.body.innerHTML = '<button style="display:none">Next</button><button data-testid="next"><span>Next</span></button><input placeholder="Search">';
++    vi.spyOn(Element.prototype, "getClientRects").mockImplementation(function(this: Element) { return (this.getAttribute("style")?.includes("none") ? [] : [{ width: 100, height: 30 }]) as unknown as DOMRectList; });
++    let selected: Element | null = null;
++    const send = vi.fn(async (_tab, method, params) => {
++      if (method === "Runtime.evaluate") { selected = Function(`return ${params.expression}`)(); return { result: selected ? { objectId: "selected" } : { subtype: "null" } }; }
++      if (method === "DOM.describeNode") return { node: { backendNodeId: selected?.tagName === "BUTTON" ? 11 : 12 } };
++      return {};
++    });
++    const cdp = { send } as unknown as CdpRunner;
++    expect(await resolveSemanticSelector(cdp, 1, 7, "text=Next")).toMatchObject({ backendNodeId: 11 });
++    expect(send).toHaveBeenCalledWith(1, "Runtime.releaseObject", { objectId: "selected" });
++    expect(await resolveSemanticSelector(cdp, 1, 7, "placeholder=Search")).toMatchObject({ backendNodeId: 12 });
++    expect(await resolveSemanticSelector(cdp, 1, 7, "testid=next")).toMatchObject({ backendNodeId: 11 });
++    expect(await resolveSemanticSelector(cdp, 1, 7, "text=x');globalThis.injected=true;//")).toMatchObject({ code: "not_found" });
++    expect((globalThis as { injected?: boolean }).injected).toBeUndefined();
++  });
++});
 diff --git a/apps/extension/src/tools/__tests__/viewport-screenshot.test.ts b/apps/extension/src/tools/__tests__/viewport-screenshot.test.ts
 index f5cd822..2337684 100644
 --- a/apps/extension/src/tools/__tests__/viewport-screenshot.test.ts
@@ -1716,10 +1785,27 @@ index 374cea5..db9db8d 100644
            priority: 2,
          })
 diff --git a/apps/extension/src/tools/interaction.ts b/apps/extension/src/tools/interaction.ts
-index 29bbb61..be522b9 100644
+index 29bbb61..2d109d1 100644
 --- a/apps/extension/src/tools/interaction.ts
 +++ b/apps/extension/src/tools/interaction.ts
-@@ -517,7 +517,8 @@ export async function clickResolvedTarget(
+@@ -53,6 +53,7 @@ import {
+   resolveTargetTab,
+ } from "./shared";
+ import { resolveSnapshotRef } from "./snapshot-ref";
++import { resolveSemanticSelector } from "./semantic-selector";
+ 
+ export interface InteractionDeps extends ClickOverlayDeps {
+   /** Arm short popup observation immediately before native input dispatch. */
+@@ -202,6 +203,8 @@ export async function resolveBackendNode(
+         message: "DOM.getDocument returned no root nodeId",
+       };
+     }
++    const semantic = await resolveSemanticSelector(cdp, target.tabId, rootNodeId, params.selector!);
++    if (semantic !== null) return semantic;
+     const query = { nodeId: rootNodeId, selector: params.selector };
+     let nodeId: number | undefined;
+     if (strictSelector) {
+@@ -517,7 +520,8 @@ export async function clickResolvedTarget(
    if (!Number.isSafeInteger(clickCount) || clickCount < 1) {
      return { code: "invalid_params", message: "click_count must be a positive integer" };
    }
@@ -1811,6 +1897,101 @@ index 13f7a84..b218c03 100644
    if (isRpcError(captured)) return captured;
    if (signal?.aborted) return cancelled("screenshot");
    const image_base64 = captured;
+diff --git a/apps/extension/src/tools/semantic-selector.ts b/apps/extension/src/tools/semantic-selector.ts
+new file mode 100644
+index 0000000..e2f2542
+--- /dev/null
++++ b/apps/extension/src/tools/semantic-selector.ts
+@@ -0,0 +1,89 @@
++import { rpcError } from "./errors";
++import type { CdpRunner } from "./shared";
++
++const CONTROL_ROLES = new Set([
++  "button", "checkbox", "combobox", "listbox", "radio", "searchbox",
++  "slider", "spinbutton", "switch", "textbox",
++]);
++const invalid = (message: string) => ({ code: "invalid_params" as const, message });
++
++type Locator = { kind: "role" | "label" | "text" | "placeholder" | "testid"; value: string; role?: string };
++
++export function parseSemanticSelector(selector: string): Locator | null {
++  const prefix = /^(role|label|text|placeholder|testid)=/.exec(selector);
++  if (!prefix) return null;
++  const kind = prefix[1] as Locator["kind"];
++  let raw = selector.slice(prefix[0].length), role: string | undefined;
++  if (kind === "role") {
++    const parsed = /^([a-z][a-z0-9-]*)(?:\[name=(.*)\])?$/i.exec(raw);
++    if (!parsed) throw new Error('Use role=button[name="Submit"] or a snapshot ref');
++    role = parsed[1].toLowerCase();
++    raw = parsed[2] ?? "";
++  }
++  let value = raw.startsWith('"') ? JSON.parse(raw) : raw;
++  if (typeof value !== "string" || value.length > 500 || value.includes("\0"))
++    throw new Error("Semantic locator must be a literal string of at most 500 characters");
++  value = value.replace(/\s+/g, " ").trim();
++  if (!value && kind !== "role") throw new Error("Semantic locator must not be empty");
++  return { kind, value, ...(role ? { role } : {}) };
++}
++
++// Literal DOM lookups return a concrete node, never generated page instructions.
++// ponytail: text/attribute lookup is main-document only; use observed refs for frames/shadow roots.
++function findDomTarget(kind: string, value: string): Element | null {
++  const normalize = (text: string | null) => (text ?? "").replace(/\s+/g, " ").trim();
++  const visible = (element: Element) => {
++    const style = getComputedStyle(element);
++    return style.display !== "none" && style.visibility !== "hidden" && style.visibility !== "collapse"
++      && [...element.getClientRects()].some(rect => rect.width > 0 && rect.height > 0);
++  };
++  const attribute = kind === "placeholder" ? "placeholder" : "data-testid";
++  const nodes = [...document.querySelectorAll(kind === "text" ? "body *" : `[${attribute}]`)];
++  if (nodes.length > 20_000) throw new Error("Semantic lookup is too broad; use an observed ref or CSS selector");
++  let matches = nodes.filter(element => !element.closest("browser-skill-overlay,[data-bsk-overlay]")
++    && normalize(kind === "text" ? element.textContent : element.getAttribute(attribute)) === value && visible(element));
++  if (matches.length > 64) throw new Error("Semantic lookup is too broad; use an observed ref or CSS selector");
++  if (kind === "text") {
++    const interactive = matches.filter(element => element.matches("button,a[href],input,select,textarea,[role=button],[role=link],[role=menuitem],[role=tab],[role=option]"));
++    matches = interactive.length ? interactive : matches.filter(element => !matches.some(other => other !== element && element.contains(other)));
++  }
++  if (matches.length > 1) throw new Error(`Semantic locator matched ${matches.length} visible elements; use an observed ref or narrower selector`);
++  return matches[0] ?? null;
++}
++
++export async function resolveSemanticSelector(cdp: CdpRunner, tabId: number, rootNodeId: number, selector: string) {
++  let locator: Locator | null;
++  try { locator = parseSemanticSelector(selector); }
++  catch (error) { return invalid(String((error as Error).message)); }
++  if (!locator) return null;
++  const resolved = (backendNodeId: number) => ({ backendNodeId, cdpTarget: { tabId }, usedSelector: selector });
++  const missing = () => rpcError("not_found", "selector_not_found", "Semantic locator did not match a visible element; observe the page before retrying");
++  if (locator.kind === "role" || locator.kind === "label") {
++    const reply = await cdp.send<{ nodes: Array<{ ignored?: boolean; backendDOMNodeId?: number; role?: { value: string }; name?: { value: string } }> }>(tabId, "Accessibility.queryAXTree", {
++      nodeId: rootNodeId,
++      ...(locator.role ? { role: locator.role } : {}),
++      ...(locator.value ? { accessibleName: locator.value } : {}),
++    });
++    const ids = [...new Set(reply.nodes.filter(node => !node.ignored && node.backendDOMNodeId
++      && (!locator.role || node.role?.value.toLowerCase() === locator.role)
++      && (!locator.value || node.name?.value.replace(/\s+/g, " ").trim() === locator.value)
++      && (locator.kind !== "label" || CONTROL_ROLES.has(node.role?.value.toLowerCase() ?? "")))
++      .map(node => node.backendDOMNodeId!))];
++    if (ids.length > 1) return invalid(`Semantic locator matched ${ids.length} accessible elements; use an observed ref or narrower selector`);
++    return ids.length ? resolved(ids[0]) : missing();
++  }
++  let objectId: string | undefined;
++  try {
++    const reply = await cdp.send<{ result: { objectId?: string; subtype?: string; description?: string }; exceptionDetails?: { text?: string; exception?: { description?: string } } }>(tabId, "Runtime.evaluate", {
++      expression: `(${findDomTarget.toString()})(${JSON.stringify(locator.kind)},${JSON.stringify(locator.value)})`,
++      returnByValue: false,
++    });
++    objectId = reply.result.objectId;
++    if (reply.exceptionDetails) return invalid("Semantic lookup was ambiguous or exceeded its bound; use an observed ref or narrower selector");
++    if (!objectId || reply.result.subtype === "null") return missing();
++    const description = await cdp.send<{ node: { backendNodeId: number } }>(tabId, "DOM.describeNode", { objectId });
++    return resolved(description.node.backendNodeId);
++  } finally {
++    if (objectId) await cdp.send(tabId, "Runtime.releaseObject", { objectId }).catch(() => {});
++  }
++}
 diff --git a/apps/extension/src/tools/session.ts b/apps/extension/src/tools/session.ts
 index dc5fd0e..d26e5d2 100644
 --- a/apps/extension/src/tools/session.ts
@@ -1935,6 +2116,57 @@ index 9234bad..61a4600 100644
      if (!shot || !(await current()) || !(await controlled())) return changed();
      throwIfAborted(signal);
      if (cdp.getAttachmentId?.(tabId) !== identity.attachmentId) return changed();
+diff --git a/apps/extension/src/tools/vom/semantic-graph/project.ts b/apps/extension/src/tools/vom/semantic-graph/project.ts
+index 01e61e3..4b1ed9e 100644
+--- a/apps/extension/src/tools/vom/semantic-graph/project.ts
++++ b/apps/extension/src/tools/vom/semantic-graph/project.ts
+@@ -1,5 +1,23 @@
+ import type { VomNode, VomScene } from "@browser-skill/vom";
+ import type { SemanticNodeId, StructuredSemanticGraph, StructuredSemanticNode } from "./types";
++import { stableIdentifierName } from "./name-evidence";
++
++function iconHint(node: StructuredSemanticNode, children: Map<string, StructuredSemanticNode[]>): string | undefined {
++  const attrs = node.dom?.attrs ?? {};
++  if (stableIdentifierName(attrs)) {
++    for (const key of ["data-testid", "data-test-id", "id"]) if (attrs[key] && attrs[key].length <= 64) return `${key}:${attrs[key]}`;
++  }
++  const pending = [...(children.get(node.id) ?? [])];
++  for (let checked = 0; pending.length && checked < 16; checked++) {
++    const child = pending.shift()!, data = child.dom?.attrs ?? {};
++    const sprite = data.href ?? data["xlink:href"];
++    const icon = data["data-icon"] ?? data["data-lucide"] ?? (sprite?.startsWith("#") ? sprite.slice(1) : undefined)
++      ?? data.class?.match(/\b(?:lucide|icon|fa)-[a-z0-9-]+\b/i)?.[0];
++    if (icon && /^[a-z0-9_-]{1,48}$/i.test(icon)) return `icon:${icon}`;
++    if (pending.length < 16) pending.push(...(children.get(child.id) ?? []).slice(0, 8));
++  }
++  return undefined;
++}
+ 
+ function retained(node: StructuredSemanticNode): boolean {
+   return node.structure.kind === "keep" || node.structure.kind === "inferred-group";
+@@ -47,6 +65,12 @@ function domAncestors(
+ }
+ 
+ export function projectSemanticGraph(graph: StructuredSemanticGraph): VomScene {
++  const children = new Map<string, StructuredSemanticNode[]>(), names = new Map<string, number>();
++  for (const node of graph.nodes.values()) {
++    if (node.domParentId) { const rows = children.get(node.domParentId) ?? []; rows.push(node); children.set(node.domParentId, rows); }
++    const key = `${node.vom.role}\0${node.vom.name ?? ""}`;
++    names.set(key, (names.get(key) ?? 0) + 1);
++  }
+   const connectedFrames = connectedFrameIds(graph);
+   const orderedNodes = [...graph.frames.values()]
+     .filter((frame) => connectedFrames.has(frame.frameId))
+@@ -67,6 +91,9 @@ export function projectSemanticGraph(graph: StructuredSemanticGraph): VomScene {
+   }
+   const nodes: VomNode[] = orderedNodes.map((node) => ({
+     ...node.vom,
++    ...((!node.vom.name || (names.get(`${node.vom.role}\0${node.vom.name}`) ?? 0) > 1)
++      && (node.vom.clickable || ["button", "link", "menuitem", "tab"].includes(node.vom.role ?? ""))
++      ? { hint: iconHint(node, children) } : {}),
+     id: numericId.get(node.id) as number,
+     parentId: node.semanticParentId ? (numericId.get(node.semanticParentId) ?? null) : null,
+     ...(node.backendNodeId !== undefined ? { backendNodeId: node.backendNodeId } : {}),
 diff --git a/apps/extension/tsconfig.json b/apps/extension/tsconfig.json
 index 89a886b..54245dc 100644
 --- a/apps/extension/tsconfig.json
@@ -1948,7 +2180,7 @@ index 89a886b..54245dc 100644
      "types": ["chrome"],
      "baseUrl": ".",
 diff --git a/apps/extension/wxt.config.ts b/apps/extension/wxt.config.ts
-index 73b6f4c..66038ee 100644
+index 73b6f4c..165787d 100644
 --- a/apps/extension/wxt.config.ts
 +++ b/apps/extension/wxt.config.ts
 @@ -33,7 +33,8 @@ export default defineConfig({
@@ -1957,7 +2189,7 @@ index 73b6f4c..66038ee 100644
    manifest: {
 -    name: "BrowserSkill",
 +    name: "DeepSeek Harness",
-+    version_name: "0.4.2 DSH 4",
++    version_name: process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.5",
      description:
        "Let AI agents use your logged-in browser in a separate Agent Window—without interrupting your work. Powered by the bsk CLI.",
      // Flat debugger sessions are required to address out-of-process iframes.
@@ -1978,27 +2210,39 @@ index 73b6f4c..66038ee 100644
        default_icon: {
          16: "icon/logo.png",
          32: "icon/logo.png",
-@@ -85,6 +87,7 @@ export default defineConfig({
+@@ -85,6 +87,8 @@ export default defineConfig({
        },
      ],
      define: {
++      __DSH_INTEGRATION_VERSION__: JSON.stringify(process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.5"),
 +      __DSH_HARNESS_URL__: JSON.stringify(process.env.BSK_DSH_HTTP_BASE ?? "http://127.0.0.1:3080"),
        __BSK_EXT_BUILD__: JSON.stringify(EXTENSION_BUILD),
        __BSK_EXT_VERSION__: JSON.stringify(EXTENSION_VERSION),
        __BSK_DAEMON_WS_URL__: JSON.stringify(
 diff --git a/packages/dsh-plugin-browserskill/src/browser-tools.ts b/packages/dsh-plugin-browserskill/src/browser-tools.ts
-index 7357e43..09e12b2 100644
+index 7357e43..cdf9af7 100644
 --- a/packages/dsh-plugin-browserskill/src/browser-tools.ts
 +++ b/packages/dsh-plugin-browserskill/src/browser-tools.ts
-@@ -7,6 +7,7 @@
+@@ -7,7 +7,9 @@
  
  import { defineTool, type ParameterSchemaSpec, type ToolDefinition } from "@deepseek-ai/dsh-tools";
  import { DEBUG_PARAMETERS } from "./debug-tool";
 +import { executeScopedBrowserAction } from "./dsh-session-scope.mjs";
  import { disposeAll } from "./disposables";
++import { BATCH_PARAMETERS, checkAdvancedCompatibility, createDshOperations } from "./dsh-operations";
  import { EXTRACT_PARAMETERS } from "./extract-tool";
  import {
-@@ -85,6 +86,7 @@ function definitionFor(
+   DRAG_PARAMETERS,
+@@ -54,7 +56,7 @@ const DEVICE_PRESETS = [
+ 
+ const TARGET_PARAM = {
+   type: "string",
+-  description: "Snapshot ref such as @e3, or a CSS selector.",
++  description: 'Snapshot ref such as @e3, CSS, or exact semantic locator: role=button[name="Submit"], label=Email, text=Next, placeholder=Search, testid=submit. Semantic locators must identify one visible main-document element; use refs for frames.',
+ } as const;
+ 
+ const DOMAIN_RESULT = { type: "json" } as const;
+@@ -85,6 +87,7 @@ function definitionFor(
  function defineBrowserTool(
    spec: BrowserToolSpec,
    definitions: ReadonlyMap<string, ToolDefinition>,
@@ -2006,16 +2250,25 @@ index 7357e43..09e12b2 100644
  ): ToolDefinition {
    const actionNames = Object.keys(spec.actions);
    return defineTool({
-@@ -125,6 +127,8 @@ function defineBrowserTool(
+@@ -125,6 +128,17 @@ function defineBrowserTool(
        return definition.isConcurrencySafe?.(operationArgs(args)) === true;
      },
      async execute(args, exec) {
 +      return executeScopedBrowserAction(deps, spec.name, args, exec, async (scoped: typeof args) => {
 +      args = scoped;
++      if (spec.name === "bsk_interact") {
++        const actionArgs = args as typeof args & { target?: unknown; params?: unknown; session?: string };
++        let target = actionArgs.target;
++        if (args.action === "step" && typeof actionArgs.params === "string") {
++          try { target = JSON.parse(actionArgs.params).selector; } catch { /* The native action reports invalid params. */ }
++        }
++        if (args.action === "batch" || (typeof target === "string" && /^(role|label|text|placeholder|testid)=/.test(target)))
++          await checkAdvancedCompatibility(deps, deps.registry.resolve(actionArgs.session, "browser compatibility"), exec);
++      }
        const definition = definitionFor(definitions, spec.actions, args.action);
        validateExpectations(args.expect);
        return (await definition.execute(operationArgs(args), {
-@@ -134,6 +138,7 @@ function defineBrowserTool(
+@@ -134,6 +148,7 @@ function defineBrowserTool(
          observationId: definition.name === "interact.drag" ? undefined : args.observationId,
          actionExpectations: args.expect,
        } as typeof exec)) as never;
@@ -2023,25 +2276,28 @@ index 7357e43..09e12b2 100644
      },
      finalizeContent(exec, result) {
        // The host also finalizes calls rejected before argument validation.
-@@ -162,7 +167,8 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
+@@ -162,7 +177,9 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
    {
      name: toolNames.session,
      description:
 -      "Manage plugin-owned browser sessions. Human collaboration is automatic; share is an optional compatibility alias for sync/rebinding. " +
 +      "Manage plugin-owned browser sessions. 需要用户操作不等于任务完成：调用 bsk_assist request-help 在网页弹出提醒并等待，不要结束会话。任务完成前必须 finish：只保留用户需要继续操作/阅读的实际标签，keepTabIds:[] 关闭临时任务页并释放浏览器。 " +
 +      "share is an optional compatibility alias for sync/rebinding. " +
++      "diagnose reads compiled/files/CLI/extension versions and recent owned command timings; no session is required for core checks. " +
        "sync returns current state and context_id; wait-user waits for hand-back; cooperation-status reads ownership. " +
        "sync can saveFull to a new JSON file for offline bsk_inspect view; matchText only folds plain numbered fallback buttons, not general text. " +
        "Target policy lets DOM actions reuse contextId across supplementary reads; pass expect for business facts that must remain true. Human intervention or document replacement requires sync. Untargeted actions also require observationId. " +
-@@ -178,6 +184,7 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
+@@ -178,14 +195,20 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
        "acknowledgement, specify a target. Once accepted, cleanup continues if the call is aborted.",
      actions: {
        start: "session.start",
 +      finish: "session.finish",
        stop: "session.stop",
        list: "session.list",
++      diagnose: "session.diagnose",
        share: "session.cooperate.enable",
-@@ -186,6 +193,10 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
+       sync: "session.cooperate.sync",
+       "wait-user": "session.cooperate.wait",
        "cooperation-status": "session.cooperate.status",
      },
      parameters: {
@@ -2052,15 +2308,32 @@ index 7357e43..09e12b2 100644
        ...SESSION_STOP_PARAMS,
        tabId: TAB_ID_PARAM,
        timeoutMs: TIMEOUT_MS_PARAM,
-@@ -293,6 +304,7 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
+@@ -293,6 +316,8 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
      description:
        "Interact with the active Agent Window tab. Actions: click, hover, wheel, drag, step, scroll-to, focus, blur, fill, select, " +
        "drag requires target plus to or a nonzero deltaX/deltaY. step runs one stepAction using params JSON, then optional untilVisible readiness and read-only sync; inspect ok/action/readiness/post before deciding what to do next and never blindly replay an action. " +
 +      "For routine DOM work prefer step and reuse its returned context; avoid an extra sync, full observe, or screenshot when the returned state already answers the question. " +
++      "batch runs 1..8 already-decided targeted steps under one session queue, stops on failure/intervention/deadline and returns one final receipt. Never replay a partial batch. " +
        "press, evaluate, upload, download. evaluate requires expression; upload requires target/files; download requires target/output. click/hover/scroll-to/focus/blur/fill/select require target; fill also requires value; select requires " +
        "values; press requires key and may optionally focus target first. wheel requires a nonzero deltaX or deltaY and optionally accepts target; observe afterwards to check the response.",
      actions: {
-@@ -404,7 +416,7 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
+@@ -301,6 +326,7 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
+       wheel: "interact.wheel",
+       drag: "interact.drag",
+       step: "interact.step",
++      batch: "interact.batch",
+       "scroll-to": "interact.scroll-to",
+       focus: "interact.focus",
+       blur: "interact.blur",
+@@ -316,6 +342,7 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
+       tabId: TAB_ID_PARAM,
+       ...DRAG_PARAMETERS,
+       ...STEP_PARAMETERS,
++      ...BATCH_PARAMETERS,
+       target: TARGET_PARAM,
+       button: {
+         type: "string",
+@@ -404,7 +431,7 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
      description:
        "Display and human-assistance operations. Actions: resize, emulate, request-help, dialog-status, dialog-accept, dialog-dismiss, operation-await, operation-cancel. Native JS dialogs require YOUR decision; use dialogId and optional text, then operation-await with the original operationId. Never repeat its action. resize " +
        "requires width/height; emulate accepts device or width/height/mobile, or off alone; " +
@@ -2069,8 +2342,15 @@ index 7357e43..09e12b2 100644
      actions: {
        resize: "assist.resize",
        emulate: "assist.emulate",
-@@ -530,7 +542,7 @@ export function registerBrowserTools(deps: ToolDeps): () => void {
-   const operations = indexOperations(createBrowserOperationDefinitions(deps));
+@@ -527,10 +554,13 @@ function indexOperations(definitions: ToolDefinition[]): ReadonlyMap<string, Too
+ 
+ /** Register all six tools or roll back this attempt; never remove foreign entries. */
+ export function registerBrowserTools(deps: ToolDeps): () => void {
+-  const operations = indexOperations(createBrowserOperationDefinitions(deps));
++  const base = createBrowserOperationDefinitions(deps);
++  const step = base.find(definition => definition.name === "interact.step");
++  if (!step) throw new Error("Native step operation is required for batch");
++  const operations = indexOperations([...base, ...createDshOperations(deps, step)]);
    // Validate every definition before publishing any schema. The host emits
    // changes per registration; this is rollback, not an atomic registry update.
 -  const definitions = BROWSER_TOOL_SPECS.map((spec) => defineBrowserTool(spec, operations));
@@ -2098,6 +2378,186 @@ index 8694793..9be22af 100644
    const sessions = ctx.get("sessions") as unknown as ISessions;
    ctx.slots.inject("tool.call.toolview", () =>
      ctx.slots.register(
+diff --git a/packages/dsh-plugin-browserskill/src/dsh-operations.ts b/packages/dsh-plugin-browserskill/src/dsh-operations.ts
+new file mode 100644
+index 0000000..daeb353
+--- /dev/null
++++ b/packages/dsh-plugin-browserskill/src/dsh-operations.ts
+@@ -0,0 +1,151 @@
++import { readFile } from "node:fs/promises";
++import { defineTool, type ToolDefinition, type ToolRunContext } from "@deepseek-ai/dsh-tools";
++import { DSH_BUILD_VERSION } from "./dsh-build-info";
++import { parseBskJson } from "./runner";
++import { EXPECT_PARAM, validateExpectations } from "./tool-params";
++import { createStepReceiptHandler } from "./step-receipt";
++import type { ToolDeps } from "./tools";
++
++// Only native batch children can carry this symbol; model arguments cannot grant a queue lease.
++export const DSH_BATCH_QUEUE = Symbol("dsh-batch-queue");
++export const DSH_BATCH_RECEIPT = Symbol("dsh-batch-step-receipt");
++type BatchContext = ToolRunContext & {
++  [DSH_BATCH_QUEUE]?: string;
++  [DSH_BATCH_RECEIPT]?: boolean;
++  observationContext?: string;
++  observationId?: string;
++  actionExpectations?: unknown;
++};
++
++type Timing = { operation: string; queueMs: number; commandMs: number; totalMs: number; outcome: string };
++const timings = new WeakMap<ToolDeps, Array<Timing & { session: string }>>();
++const compatibleSessions = new WeakMap<ToolDeps, Set<string>>();
++export async function checkAdvancedCompatibility(deps: ToolDeps, session: string, exec: ToolRunContext): Promise<void> {
++  const identity = `${session}:${deps.registry.requestFor(session)}`;
++  if (compatibleSessions.get(deps)?.has(identity)) return;
++  const result = await deps.queue.run(session, () => deps.runner.run(["debug", "capabilities", "--session", session], { signal: exec.signal, timeoutMs: 10_000, tag: session }), exec.signal);
++  const capabilities = parseBskJson(result, "browser version check") as { capabilities?: { extension?: { integration_version?: string } } };
++  if (capabilities.capabilities?.extension?.integration_version !== DSH_BUILD_VERSION)
++    throw new Error("Browser extension and Harness plugin revisions do not match. Finish current tasks and reload the updated Edge extension; no input was sent.");
++  const known = compatibleSessions.get(deps) ?? new Set<string>();
++  if (known.size >= 64) known.clear();
++  known.add(identity); compatibleSessions.set(deps, known);
++}
++export function recordDshTiming(deps: ToolDeps, session: string, timing: Timing): void {
++  const history = timings.get(deps) ?? [];
++  history.push({ session, ...timing });
++  if (history.length > 128) history.shift();
++  timings.set(deps, history);
++}
++
++const ACTIONS = ["click", "fill", "press", "select", "hover", "wheel", "scroll-to"] as const;
++export const BATCH_PARAMETERS = {
++  steps: {
++    type: "array",
++    description: "Batch: 1..8 already-decided targeted actions. Stops on the first failure, handoff or deadline; never retries. No session/context overrides.",
++    items: { type: "object", additionalProperties: false, properties: {
++      action: { type: "string", enum: ACTIONS, required: true },
++      target: { type: "string", required: true },
++      value: { type: "string" }, key: { type: "string" },
++      values: { type: "array", items: { type: "string" } },
++      deltaX: { type: "number" }, deltaY: { type: "number" },
++      expect: EXPECT_PARAM,
++    } },
++  },
++} as const;
++
++const output = { schema: { type: "json" as const }, render: (_args: unknown, value: unknown) => [{ type: "text" as const, text: JSON.stringify(value) }] };
++
++export function createDshOperations(deps: ToolDeps, step: ToolDefinition): ToolDefinition[] {
++  const receipts = createStepReceiptHandler();
++  return [defineTool({
++    name: "interact.batch", description: "Run a small decided sequence under one owned session queue. No automatic replay or rollback.",
++    parameters: { session: { type: "string" }, tabId: { type: "integer" }, timeoutMs: { type: "integer" }, ...BATCH_PARAMETERS }, output,
++    async execute(args, rawExec) {
++      const exec = rawExec as BatchContext;
++      if (!Array.isArray(args.steps) || args.steps.length < 1 || args.steps.length > 8) throw new Error("batch requires 1..8 steps");
++      const steps = args.steps;
++      if (!exec.observationContext) throw new Error("batch requires the actual contextId from sync");
++      const budget = args.timeoutMs ?? 30_000;
++      if (!Number.isSafeInteger(budget) || budget < 1000 || budget > 60_000) throw new Error("batch timeoutMs must be in 1000..60000");
++      const allowed = new Set(["action", "target", "value", "key", "values", "deltaX", "deltaY", "expect"]);
++      for (const row of steps) {
++        if (!row || typeof row !== "object" || Array.isArray(row) || Object.keys(row).some(key => !allowed.has(key))) throw new Error("batch step contains unsupported fields");
++        if (!(ACTIONS as readonly string[]).includes(row.action) || typeof row.target !== "string" || !row.target.trim() || row.target.length > 2048) throw new Error("batch requires supported targeted actions");
++        if (row.action === "fill" && typeof row.value !== "string") throw new Error("batch fill requires value");
++        if (row.action === "press" && (typeof row.key !== "string" || !row.key.trim())) throw new Error("batch press requires key");
++        if (row.action === "select" && (!Array.isArray(row.values) || !row.values.length || row.values.some(value => typeof value !== "string"))) throw new Error("batch select requires values");
++        for (const key of ["deltaX", "deltaY"] as const) if (row[key] !== undefined && !Number.isFinite(row[key])) throw new Error("batch wheel deltas must be finite");
++        if (row.action === "wheel" && !(row.deltaX || row.deltaY)) throw new Error("batch wheel requires a nonzero delta");
++        validateExpectations(row.expect);
++      }
++      const session = deps.registry.resolve(args.session, "batch"), controller = new AbortController();
++      const timer = setTimeout(() => controller.abort(new Error("Batch deadline reached")), budget);
++      const signal = AbortSignal.any([exec.signal, controller.signal]);
++      let context = exec.observationContext, observation = exec.observationId, last: unknown, completed = 0, inFlight = false;
++      const summaries: Array<{ index: number; action: string; ok: boolean }> = [];
++      const started = performance.now();
++      let response: unknown;
++      try {
++        response = await deps.queue.run(session, async () => {
++          for (const [index, row] of steps.entries()) {
++            signal.throwIfAborted();
++            if (exec.agent?.id && !deps.registry.ownedByDsh(exec.agent.id).includes(session)) throw new Error("Browser batch ownership changed");
++            deps.registry.assertUsable(session, "batch");
++            const params: Record<string, unknown> = { [/^@?e\d+$/.test(row.target) ? "ref" : "selector"]: row.target };
++            for (const key of ["value", "key", "values"] as const) if (row[key] !== undefined) params[key] = row[key];
++            if (row.deltaX !== undefined) params.delta_x = row.deltaX;
++            if (row.deltaY !== undefined) params.delta_y = row.deltaY;
++            inFlight = true;
++            const result = await step.execute({ session, ...(args.tabId === undefined ? {} : { tabId: args.tabId }), stepAction: row.action, params: JSON.stringify(params) }, {
++              ...exec, signal, [DSH_BATCH_QUEUE]: session, [DSH_BATCH_RECEIPT]: true, observationContext: context, observationId: observation,
++              actionExpectations: row.expect ?? exec.actionExpectations,
++            } as BatchContext) as { ok?: boolean; post?: { context_id?: string; observation_id?: string } };
++            inFlight = false; last = result;
++            summaries.push({ index, action: row.action, ok: result.ok === true });
++            if (result.ok !== true || !result.post?.context_id) return { ok: false, completed, stoppedAt: index, reason: "step_needs_attention", steps: summaries, last, totalMs: Math.round(performance.now() - started) } as never;
++            completed++; context = result.post.context_id; observation = result.post.observation_id;
++          }
++          return { ok: true, completed, steps: summaries, last, totalMs: Math.round(performance.now() - started) } as never;
++        }, signal);
++      } catch (error) {
++        response = { ok: false, cancelled: exec.signal.aborted, completed, stoppedAt: completed, reason: exec.signal.aborted ? "interrupted" : controller.signal.aborted ? "deadline" : "step_failed", effectState: inFlight ? "unknown" : completed ? "partial" : "none", steps: summaries, last, recovery: "Synchronize and inspect actual state; never replay completed or uncertain actions.", totalMs: Math.round(performance.now() - started) };
++      } finally { clearTimeout(timer); }
++      return receipts.complete(exec, response) as never;
++    },
++    finalizeContent: receipts.finalizeContent,
++  }), defineTool({
++    name: "session.diagnose", description: "Read compiled plugin, installed files, CLI, daemon and browser compatibility plus owned command timings. Never installs, updates or reloads software.",
++    parameters: { session: { type: "string" } }, output, isConcurrencySafe: () => true,
++    async execute(args, exec) {
++      const checks: Record<string, unknown> = {};
++      const run = async (command: string[]) => {
++        const result = await deps.runner.run(command, { signal: exec.signal, timeoutMs: 10_000 });
++        return parseBskJson(result, "diagnose");
++      };
++      try {
++        const result = await deps.runner.run(["--version"], { signal: exec.signal, timeoutMs: 10_000 });
++        const version = result.stdout.match(/\bbsk\s+(\d+\.\d+\.\d+)/)?.[1];
++        checks.cli = { version: version ?? "unknown", expected: "0.4.2", compatible: version === "0.4.2" };
++      } catch { checks.cli = { compatible: false, reason: "cli_unavailable" }; }
++      try { const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")); checks.files = { version: pkg.version, runtimeMatchesFiles: pkg.version === DSH_BUILD_VERSION }; }
++      catch { checks.files = { runtimeMatchesFiles: false, reason: "package_metadata_unavailable" }; }
++      try {
++        const browsers = await run(["browsers"]) as Array<{ instance_id: string; extension_version: string; extension_protocol_version?: string; unresponsive?: boolean }>;
++        checks.browsers = browsers.map(browser => ({ instance: browser.instance_id, version: browser.extension_version, protocol: browser.extension_protocol_version, compatible: browser.extension_version === "0.4.2" && browser.extension_protocol_version === "1.8" && !browser.unresponsive }));
++      } catch { checks.browsers = { compatible: false, reason: "daemon_or_extension_unavailable" }; }
++      const owned = exec.agent?.id ? deps.registry.ownedByDsh(exec.agent.id) : [];
++      const session = args.session ?? owned.at(-1);
++      if (session) {
++        try {
++          const caps = await deps.queue.run(session, () => run(["debug", "capabilities", "--session", session]), exec.signal) as { capabilities?: { extension?: { integration_version?: string } } };
++          const version = caps.capabilities?.extension?.integration_version;
++          checks.extension = { integrationVersion: version ?? "not_reported", runtimeMatchesPlugin: version === DSH_BUILD_VERSION };
++        } catch { checks.extension = { reason: "active_session_capabilities_unavailable" }; }
++      }
++      exec.signal.throwIfAborted();
++      const recent = (timings.get(deps) ?? []).filter(row => args.session ? row.session === args.session : owned.includes(row.session)).slice(-20);
++      return { pluginVersion: DSH_BUILD_VERSION, expectedProtocol: "1.8", checks, recentTimings: recent, notes: "Command timings include process/IPC/page handling; no target text, form values, URLs or screenshots are retained. Extension patch check needs an owned active task." } as never;
++    },
++  })];
++}
+diff --git a/packages/dsh-plugin-browserskill/src/gesture-observation-tools.ts b/packages/dsh-plugin-browserskill/src/gesture-observation-tools.ts
+index f9b8607..64cb6b5 100644
+--- a/packages/dsh-plugin-browserskill/src/gesture-observation-tools.ts
++++ b/packages/dsh-plugin-browserskill/src/gesture-observation-tools.ts
+@@ -8,6 +8,7 @@ import {
+   type ToolRegistrar,
+ } from "./phase-one-runtime";
+ import { createStepReceiptHandler } from "./step-receipt";
++import { DSH_BATCH_RECEIPT } from "./dsh-operations";
+ import {
+   CONTROL_POLICY_PARAM,
+   OBSERVATION_ID_PARAM,
+@@ -333,7 +334,9 @@ export function registerGestureObservationTools(
+             allowStepResult: true,
+           },
+         );
+-        return stepReceipt.complete(exec, receipt) as never;
++        // The parent batch owns one durable receipt/finalizer for all its steps.
++        return ((exec as typeof exec & { [DSH_BATCH_RECEIPT]?: boolean })[DSH_BATCH_RECEIPT]
++          ? receipt : stepReceipt.complete(exec, receipt)) as never;
+       },
+       finalizeContent: stepReceipt.finalizeContent,
+       presentCall: (args) => ({
 diff --git a/packages/dsh-plugin-browserskill/src/index.ts b/packages/dsh-plugin-browserskill/src/index.ts
 index dcd9504..9076267 100644
 --- a/packages/dsh-plugin-browserskill/src/index.ts
@@ -2145,6 +2605,26 @@ index dcd9504..9076267 100644
  
    // Non-blocking install probe: warn early when bsk is missing instead of
    // failing the first tool call with a bare spawn error. Uses --version on
+diff --git a/packages/dsh-plugin-browserskill/src/observation-http.ts b/packages/dsh-plugin-browserskill/src/observation-http.ts
+index 1ae65b3..be12de2 100644
+--- a/packages/dsh-plugin-browserskill/src/observation-http.ts
++++ b/packages/dsh-plugin-browserskill/src/observation-http.ts
+@@ -23,6 +23,7 @@
+  */
+ 
+ import type { IncomingMessage, ServerResponse } from "node:http";
++import { DSH_BUILD_VERSION } from "./dsh-build-info";
+ import type { Context } from "@deepseek-ai/cordis";
+ import type { ObservationService } from "./observation";
+ import type { SessionStarts } from "./session-starts";
+@@ -120,6 +121,7 @@ export function registerObservationRoutes(
+         }
+         if (fenceRejected(req, res)) return;
+         sendJson(res, 200, {
++          pluginVersion: DSH_BUILD_VERSION,
+           sessions: observation.getState(),
+           available: observation.isAvailable(),
+         });
 diff --git a/packages/dsh-plugin-browserskill/src/observation.ts b/packages/dsh-plugin-browserskill/src/observation.ts
 index 855f06b..6795659 100644
 --- a/packages/dsh-plugin-browserskill/src/observation.ts
@@ -2280,18 +2760,19 @@ index 74bfe5a..fa86db5 100644
      const record = ownedRequestId ? this.journal.records.get(ownedRequestId) : undefined;
      if (!record || !this.ownsRegisteredSession(record))
 diff --git a/packages/dsh-plugin-browserskill/src/tools.ts b/packages/dsh-plugin-browserskill/src/tools.ts
-index d048534..fd57a59 100644
+index d048534..069ce14 100644
 --- a/packages/dsh-plugin-browserskill/src/tools.ts
 +++ b/packages/dsh-plugin-browserskill/src/tools.ts
-@@ -17,6 +17,7 @@ import {
+@@ -17,6 +17,8 @@ import {
    type ToolRunContext,
  } from "@deepseek-ai/dsh-tools";
  import { ownerSessionIds } from "./archive-cleanup";
 +import { finishBrowserTask } from "./dsh-task-finish.mjs";
++import { DSH_BATCH_QUEUE, recordDshTiming } from "./dsh-operations";
  import {
    appendSavedObservationOptions,
    SAVED_OBSERVATION_PARAMETERS,
-@@ -75,6 +76,8 @@ export interface ToolDeps {
+@@ -75,6 +77,8 @@ export interface ToolDeps {
    /** Per-session FIFO: the daemon rejects a second command while one is unfinished. */
    queue: KeyedExecutor;
    starts?: SessionStarts;
@@ -2300,9 +2781,20 @@ index d048534..fd57a59 100644
  }
  
  /** Device presets supported by `bsk emulate --device`. */
-@@ -127,6 +130,11 @@ async function runBsk(
+@@ -106,6 +110,7 @@ async function runBsk(
+   parseOptions: ParseBskJsonOptions = {},
+ ): Promise<unknown> {
+   const metadata = exec as ToolRunContext & {
++    [DSH_BATCH_QUEUE]?: string;
+     observationContext?: string;
+     observationDependencies?: string[];
+     observationId?: string;
+@@ -126,11 +131,19 @@ async function runBsk(
+   // per-session queue — marking it while still queued would overwrite the
    // in-flight action's label (and flash it idle on a queued abort).
    let began = false;
++  const requestedAt = performance.now();
++  let commandAt: number | undefined;
    let actionError: string | undefined;
 +  const userWait = observeSession !== undefined && (args[0] === "request-help" || (args[0] === "cooperate" && args[1] === "wait"));
 +  if (userWait) {
@@ -2312,7 +2804,23 @@ index d048534..fd57a59 100644
    try {
      let result;
      try {
-@@ -182,6 +190,11 @@ async function runBsk(
+       const runOnce = () => {
++        commandAt ??= performance.now();
+         if (observeSession !== undefined) {
+           began = true;
+           deps.observation.beginAction(observeSession, actionForLabel(label));
+@@ -160,7 +173,9 @@ async function runBsk(
+         await deps.observation.waitForCapture(observeSession, exec.signal);
+       result =
+         observeSession !== undefined && (args[0] !== "cooperate" || args[1] === "enable")
+-          ? await deps.queue.run(observeSession, runOnce, exec.signal)
++          ? metadata[DSH_BATCH_QUEUE] === observeSession
++            ? await runOnce()
++            : await deps.queue.run(observeSession, runOnce, exec.signal)
+           : await runOnce();
+     } catch (error) {
+       if (isCommandNotFound(error)) {
+@@ -182,10 +197,23 @@ async function runBsk(
      actionError = error instanceof Error ? error.message.split("\n")[0] : String(error);
      throw error;
    } finally {
@@ -2324,7 +2832,19 @@ index d048534..fd57a59 100644
      if (observeSession !== undefined && began) {
        deps.observation.endAction(observeSession, actionError);
      }
-@@ -524,6 +537,17 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
+     releaseForeground?.();
++    if (observeSession !== undefined) {
++      const ended = performance.now();
++      recordDshTiming(deps, observeSession, {
++        operation: args[0] === "cooperate" ? `cooperate ${args[1]}` : args[0], queueMs: Math.round((commandAt ?? ended) - requestedAt),
++        commandMs: commandAt === undefined ? 0 : Math.round(ended - commandAt), totalMs: Math.round(ended - requestedAt),
++        outcome: exec.signal.aborted ? "cancelled" : actionError ? "needs_attention" : "ok",
++      });
++    }
+   }
+ }
+ 
+@@ -524,6 +552,17 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
      }),
    );
  
@@ -2342,7 +2862,7 @@ index d048534..fd57a59 100644
    register(
      defineTool({
        name: "session.stop",
-@@ -557,6 +581,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
+@@ -557,6 +596,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
            return await starts.stop({
              sessionId: args.session,
              requestId: args.requestId,
@@ -2350,7 +2870,7 @@ index d048534..fd57a59 100644
              signal: exec.signal,
            });
          } catch (error) {
-@@ -1088,7 +1113,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
+@@ -1088,7 +1128,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
          render: (_args, value) => {
            const text =
              value.image !== undefined
@@ -2371,6 +2891,103 @@ index 7d8e8eb..b7c4ebe 100644
        { name: "tool.call.toolview", key: "bsk_inspect" },
        { name: "shell.overlay", id: "bsk-observation" },
      ]);
+diff --git a/packages/dsh-plugin-browserskill/tests/dsh-batch.test.ts b/packages/dsh-plugin-browserskill/tests/dsh-batch.test.ts
+new file mode 100644
+index 0000000..941cebd
+--- /dev/null
++++ b/packages/dsh-plugin-browserskill/tests/dsh-batch.test.ts
+@@ -0,0 +1,56 @@
++import { afterEach, describe, expect, it, vi } from "vitest";
++import { createStepRuntime, STEP_SUCCESS, STEP_PARTIAL, stepReply } from "./helpers/step-runtime";
++
++const cleanups: Array<() => Promise<void>> = [];
++afterEach(async () => { for (const dispose of cleanups.splice(0)) await dispose(); });
++const steps = [{ action: "fill", target: "label=Email", value: "private@example.test" }, { action: "click", target: 'role=button[name="Continue"]' }, { action: "press", target: "#code", key: "Enter" }];
++async function host(run: Parameters<typeof createStepRuntime>[0]) { const runtime = await createStepRuntime(async (args, options) => args[0] === "debug" ? stepReply({ capabilities: { extension: { integration_version: "0.4.2-dsh.5" } } }, 0) : run(args, options)); cleanups.push(runtime.dispose); return runtime; }
++function receipt(result: { content: Array<{ type: string; text?: string }> }) { const block = result.content.at(-1); return block?.text ? JSON.parse(block.text) : undefined; }
++
++describe("bounded native batch", () => {
++  it("holds the session queue across all steps so other calls cannot interleave", async () => {
++    let entered!: () => void, release!: () => void;
++    const ready = new Promise<void>(resolve => { entered = resolve; }),gate = new Promise<void>(resolve => { release = resolve; });
++    const run = vi.fn(async (_args: string[]) => { if (run.mock.calls.length === 1) { entered();await gate; } return stepReply(STEP_SUCCESS, 0); });
++    const runtime = await host(run),batch = runtime.execute(undefined, { action: "batch", contextId: "ctx-before", steps }, "batch-owner");
++    await ready;const outside = runtime.execute(undefined, { contextId: "ctx-after" }, "outside-owner");
++    await new Promise(resolve => setImmediate(resolve));expect(run).toHaveBeenCalledTimes(1);release();
++    const results = await Promise.all([batch,outside]);expect(results.every(result => !result.isError)).toBe(true);
++    expect(run).toHaveBeenCalledTimes(4);const args = run.mock.calls.at(-1)![0];expect(JSON.parse(args[args.indexOf("--params") + 1]).ref).toBe("e1");
++  });
++  it("refuses a mismatched active extension before sending input", async () => {
++    const run = vi.fn(async (_args: string[]) => stepReply({ capabilities: { extension: { integration_version: "0.4.2-dsh.4" } } }, 0));
++    const runtime = await createStepRuntime(run);cleanups.push(runtime.dispose);
++    const result = await runtime.execute(undefined, { action: "batch", contextId: "ctx-before", steps });
++    expect(result.isError).toBe(true);expect(run).toHaveBeenCalledTimes(1);expect(run.mock.calls[0][0][0]).toBe("debug");
++  });
++  it("reuses native step, advances context and returns one final observation without echoing submitted values", async () => {
++    let count = 0;
++    const run = vi.fn(async (args: string[]) => stepReply({ ...STEP_SUCCESS, post: { ...STEP_SUCCESS.post, context_id: `ctx-${++count}`, observation_id: `obs-${count}` } }, 0));
++    const runtime = await host(run);
++    const result = await runtime.execute(undefined, { action: "batch", contextId: "ctx-before", steps });
++    expect(result.isError, JSON.stringify(result.content)).toBe(false);expect(run).toHaveBeenCalledTimes(3);
++    expect(run.mock.calls.map(([args]) => args[args.indexOf("--context") + 1])).toEqual(["ctx-before", "ctx-1", "ctx-2"]);
++    const value = receipt(result);expect(value).toMatchObject({ ok: true, completed: 3 });expect(value.last.post.context_id).toBe("ctx-3");
++    expect(JSON.stringify(value)).not.toContain("private@example.test");
++  });
++  it("stops after a partial action and preserves the receipt through the host finalizer", async () => {
++    let count = 0;
++    const run = vi.fn(async () => stepReply(++count === 1 ? STEP_SUCCESS : STEP_PARTIAL, count === 1 ? 0 : 1));
++    const runtime = await host(run);const result = await runtime.execute(undefined, { action: "batch", contextId: "ctx-before", steps });
++    expect(result.isError).toBe(true);expect(run).toHaveBeenCalledTimes(2);
++    expect(receipt(result)).toMatchObject({ ok: false, completed: 1, stoppedAt: 1, last: { action_replayed: false } });
++  });
++  it("validates the whole sequence before input, including ownership overrides", async () => {
++    const run = vi.fn(async () => stepReply(STEP_SUCCESS, 0)),runtime = await host(run);
++    const result = await runtime.execute(undefined, { action: "batch", contextId: "ctx-before", steps: [steps[0], { ...steps[1], session: "s2" }] });
++    expect(result.isError).toBe(true);expect(run).not.toHaveBeenCalled();
++  });
++  it("cancels an in-flight child without running later steps or replaying it", async () => {
++    let entered!: () => void; const ready = new Promise<void>(resolve => { entered = resolve; });
++    const run = vi.fn(async (_args, options) => { entered(); await new Promise<void>(resolve => options?.signal?.addEventListener("abort", () => resolve(), { once: true })); return stepReply(STEP_PARTIAL, 1, { aborted: true }); });
++    const runtime = await host(run),controller = new AbortController();const pending = runtime.execute(controller, { action: "batch", contextId: "ctx-before", steps });
++    await ready;controller.abort();const result = await pending;expect(result.isError).toBe(true);expect(run).toHaveBeenCalledTimes(1);
++    expect(result.content.some(block => block.type === "text" && block.text.includes('"completed":0'))).toBe(true);
++  });
++});
+diff --git a/packages/dsh-plugin-browserskill/tests/dsh-diagnostics.test.ts b/packages/dsh-plugin-browserskill/tests/dsh-diagnostics.test.ts
+new file mode 100644
+index 0000000..0e56332
+--- /dev/null
++++ b/packages/dsh-plugin-browserskill/tests/dsh-diagnostics.test.ts
+@@ -0,0 +1,29 @@
++import { describe, expect, it, vi } from "vitest";
++import { createDshOperations, recordDshTiming } from "../src/dsh-operations";
++import { KeyedExecutor } from "../src/queue";
++import { SessionRegistry } from "../src/sessions";
++import type { ToolDeps } from "../src/tools";
++
++describe("browser diagnostics", () => {
++  it("reports compiled/CLI/extension versions and isolates bounded timings to the caller", async () => {
++    const registry = new SessionRegistry(5);
++    for (const id of ["s1", "s2"]) { registry.completeStart({ sessionId: id, startedAtMs: 0 }); registry.trackOwner(id, [id === "s1" ? "owner-a" : "owner-b"]); }
++    const run = vi.fn(async (args: string[]) => ({ code: 0, stderr: "", aborted: false, timedOut: false, stdout: args[0] === "--version" ? "bsk 0.4.2" : JSON.stringify(args[0] === "browsers" ? [{ instance_id: "synthetic", extension_version: "0.4.2", extension_protocol_version: "1.8" }] : { capabilities: { extension: { integration_version: "0.4.2-dsh.5" } } }) }));
++    const deps = { registry, runner: { run }, queue: new KeyedExecutor() } as unknown as ToolDeps;
++    recordDshTiming(deps, "s1", { operation: "fill", queueMs: 2, commandMs: 12, totalMs: 14, outcome: "ok" });
++    recordDshTiming(deps, "s2", { operation: "click", queueMs: 0, commandMs: 10, totalMs: 10, outcome: "ok" });
++    const doctor = createDshOperations(deps, {} as never)[1];
++    const result = await doctor.execute({}, { signal: new AbortController().signal, agent: { id: "owner-a" } } as never) as Record<string, any>;
++    expect(result.pluginVersion).toBe("0.4.2-dsh.5");
++    expect(result.checks.cli.compatible).toBe(true);expect(result.checks.extension.runtimeMatchesPlugin).toBe(true);
++    expect(result.recentTimings).toHaveLength(1);expect(result.recentTimings[0]).toEqual({ session: "s1", operation: "fill", queueMs: 2, commandMs: 12, totalMs: 14, outcome: "ok" });
++    expect(run.mock.calls.some(([args]) => args[0] === "start" || args[0] === "stop")).toBe(false);
++  });
++  it("reports missing CLI and disconnected browser without opening a task", async () => {
++    const run = vi.fn(async () => { throw new Error("unavailable"); });
++    const deps = { registry: { ownedByDsh: () => [] }, runner: { run } } as unknown as ToolDeps;
++    const result = await createDshOperations(deps, {} as never)[1].execute({}, { signal: new AbortController().signal, agent: { id: "owner" } } as never) as Record<string, any>;
++    expect(result.checks.cli.compatible).toBe(false);expect(result.checks.browsers.compatible).toBe(false);expect(result.recentTimings).toEqual([]);
++    expect(run).toHaveBeenCalledTimes(2);
++  });
++});
 diff --git a/packages/dsh-plugin-browserskill/tests/profile-selection.test.ts b/packages/dsh-plugin-browserskill/tests/profile-selection.test.ts
 index 2b1fb22..9493710 100644
 --- a/packages/dsh-plugin-browserskill/tests/profile-selection.test.ts
@@ -2432,7 +3049,7 @@ index 40b7a8d..33038a0 100644
      expect(skill.source).toBe("bundled");
      // Source frontmatter is registration metadata and must not leak into the body.
 diff --git a/packages/dsh-plugin-browserskill/tests/tools.test.ts b/packages/dsh-plugin-browserskill/tests/tools.test.ts
-index 604e88e..a3886f2 100644
+index 604e88e..e97cbce 100644
 --- a/packages/dsh-plugin-browserskill/tests/tools.test.ts
 +++ b/packages/dsh-plugin-browserskill/tests/tools.test.ts
 @@ -2,7 +2,7 @@ import type { ChildProcess } from "node:child_process";
@@ -2449,11 +3066,19 @@ index 604e88e..a3886f2 100644
  
  const EXPECTED_ACTIONS = {
 -  bsk_session: ["start", "stop", "list", "share", "sync", "wait-user", "cooperation-status"],
-+  bsk_session: ["start", "finish", "stop", "list", "share", "sync", "wait-user", "cooperation-status"],
++  bsk_session: ["start", "finish", "stop", "list", "diagnose", "share", "sync", "wait-user", "cooperation-status"],
    bsk_page: ["navigate", "back", "forward", "reload", "wait", "wait-for-element"],
    bsk_inspect: [
      "observe",
-@@ -564,7 +564,7 @@ describe("gesture and saved observation actions", () => {
+@@ -440,6 +440,7 @@ const EXPECTED_ACTIONS = {
+     "wheel",
+     "drag",
+     "step",
++    "batch",
+     "scroll-to",
+     "focus",
+     "blur",
+@@ -564,7 +565,7 @@ describe("gesture and saved observation actions", () => {
        params: '{"ref":"e1"}',
        untilVisible: "#ready",
        waitTimeoutMs: 5000,
@@ -2462,7 +3087,7 @@ index 604e88e..a3886f2 100644
        contextId: "ctx-before",
        dependsOn: ["@e1"],
      };
-@@ -587,7 +587,7 @@ describe("gesture and saved observation actions", () => {
+@@ -587,7 +588,7 @@ describe("gesture and saved observation actions", () => {
          "--until-visible",
          "#ready",
          "--save-full",
@@ -2471,7 +3096,7 @@ index 604e88e..a3886f2 100644
          "--context",
          "ctx-before",
        ]),
-@@ -725,8 +725,8 @@ describe("gesture and saved observation actions", () => {
+@@ -725,8 +726,8 @@ describe("gesture and saved observation actions", () => {
      await startSession(tools);
      await tools.get("session.cooperate.sync")!.execute(
        {
@@ -2482,7 +3107,7 @@ index 604e88e..a3886f2 100644
          matchText: ["item 20", "Buy"],
          contextLines: 0,
          settle: true,
-@@ -738,9 +738,9 @@ describe("gesture and saved observation actions", () => {
+@@ -738,9 +739,9 @@ describe("gesture and saved observation actions", () => {
      expect(command).toEqual(
        expect.arrayContaining([
          "--save-full",
@@ -2494,7 +3119,7 @@ index 604e88e..a3886f2 100644
          "--settle",
          "--context-lines",
          "0",
-@@ -813,9 +813,9 @@ describe("gesture and saved observation actions", () => {
+@@ -813,9 +814,9 @@ describe("gesture and saved observation actions", () => {
      "--session=foreign",
    ])("preserves option-like find literal %s in an offline view", async (find) => {
      const { tools, calls } = setup({ view: { historical: true } });
@@ -2506,7 +3131,7 @@ index 604e88e..a3886f2 100644
      expect(calls[0].options.tag).toBeUndefined();
    });
  
-@@ -824,13 +824,13 @@ describe("gesture and saved observation actions", () => {
+@@ -824,13 +825,13 @@ describe("gesture and saved observation actions", () => {
      const { tools, calls } = setup({ view: reply });
      const result = await tools
        .get("inspect.view")!
@@ -2522,7 +3147,7 @@ index 604e88e..a3886f2 100644
          "--find=Buy",
          "--start-line",
          "2",
-@@ -852,7 +852,7 @@ describe("gesture and saved observation actions", () => {
+@@ -852,7 +853,7 @@ describe("gesture and saved observation actions", () => {
    ])("does not treat a historical view as live authority: %j", async (args) => {
      const { tools, calls } = setup({});
      await expect(
@@ -2531,7 +3156,7 @@ index 604e88e..a3886f2 100644
      ).rejects.toThrow();
      expect(calls).toHaveLength(0);
    });
-@@ -2941,7 +2941,7 @@ describe("structured extraction", () => {
+@@ -2941,7 +2942,7 @@ describe("structured extraction", () => {
      ]);
    });
    it("routes discovered targets and CSV receipts through the existing tool", async () => {
@@ -2540,7 +3165,7 @@ index 604e88e..a3886f2 100644
      const { tools, calls } = setup({
        "session start": START_REPLY("s1"),
        "extract table": receipt,
-@@ -2954,7 +2954,7 @@ describe("structured extraction", () => {
+@@ -2954,7 +2955,7 @@ describe("structured extraction", () => {
            extractKind: "table",
            extractTarget: "xt_fixture",
            extractFormat: "csv",
@@ -2549,7 +3174,7 @@ index 604e88e..a3886f2 100644
            csvSafe: true,
          },
          makeExec(),
-@@ -2970,7 +2970,7 @@ describe("structured extraction", () => {
+@@ -2970,7 +2971,7 @@ describe("structured extraction", () => {
        "--format",
        "csv",
        "--out",
@@ -2558,7 +3183,7 @@ index 604e88e..a3886f2 100644
        "--csv-safe",
      ]);
    });
-@@ -2993,7 +2993,7 @@ describe("structured extraction", () => {
+@@ -2993,7 +2994,7 @@ describe("structured extraction", () => {
        "262144",
      ]);
      await inspect.execute(
@@ -2567,7 +3192,7 @@ index 604e88e..a3886f2 100644
        makeExec(),
      );
      expect(calls.at(-1)?.args).not.toContain("--max-bytes");
-@@ -3205,7 +3205,7 @@ describe("script and file actions share the existing runtime", () => {
+@@ -3205,7 +3206,7 @@ describe("script and file actions share the existing runtime", () => {
        action: "upload",
        args: {
          target: "#drop",
@@ -2576,7 +3201,7 @@ index 604e88e..a3886f2 100644
          mode: "drop",
          timeoutMs: 6000,
        },
-@@ -3217,9 +3217,9 @@ describe("script and file actions share the existing runtime", () => {
+@@ -3217,9 +3218,9 @@ describe("script and file actions share the existing runtime", () => {
          "--tab-id",
          "7",
          "--file",
@@ -2588,7 +3213,7 @@ index 604e88e..a3886f2 100644
          "--mode",
          "drop",
          "--timeout",
-@@ -3230,7 +3230,7 @@ describe("script and file actions share the existing runtime", () => {
+@@ -3230,7 +3231,7 @@ describe("script and file actions share the existing runtime", () => {
        action: "download",
        args: {
          target: "#download",
@@ -2597,7 +3222,7 @@ index 604e88e..a3886f2 100644
          overwrite: true,
          timeoutMs: 6000,
        },
-@@ -3240,7 +3240,7 @@ describe("script and file actions share the existing runtime", () => {
+@@ -3240,7 +3241,7 @@ describe("script and file actions share the existing runtime", () => {
          "--session",
          "s1",
          "--out",
@@ -2606,7 +3231,7 @@ index 604e88e..a3886f2 100644
          "--tab-id",
          "7",
          "--overwrite",
-@@ -3271,8 +3271,8 @@ describe("script and file actions share the existing runtime", () => {
+@@ -3271,8 +3272,8 @@ describe("script and file actions share the existing runtime", () => {
    });
    it.each([
      { action: "evaluate", expression: "1+1" },
@@ -2628,3 +3253,43 @@ index a9ec8ab..a37e397 100644
      "target": "ES2022",
      "module": "ESNext",
      "moduleResolution": "Bundler",
+diff --git a/packages/vom/src/__tests__/hint.test.ts b/packages/vom/src/__tests__/hint.test.ts
+new file mode 100644
+index 0000000..a1b78e7
+--- /dev/null
++++ b/packages/vom/src/__tests__/hint.test.ts
+@@ -0,0 +1,8 @@
++import { expect, it } from "vitest";
++import { renderVom } from "../render";
++
++it("renders an icon hint without replacing the browser's accessible name", () => {
++  const result = renderVom({ viewport: { width: 800, height: 600 }, nodes: [{ id: 1, parentId: null, tag: "button", role: "button", name: "", hint: "icon:trash", backendNodeId: 1, rect: { x: 10, y: 10, w: 80, h: 30 }, paintOrder: 1, position: "static", pointerEvents: "auto" }] });
++  expect(result.text).toContain('hint="icon:trash"');
++  expect(result.text).not.toContain('button "icon:trash"');
++});
+diff --git a/packages/vom/src/render.ts b/packages/vom/src/render.ts
+index 171f3ad..08a0ac0 100644
+--- a/packages/vom/src/render.ts
++++ b/packages/vom/src/render.ts
+@@ -786,6 +786,8 @@ function renderNodeLine(
+   if (hint) line += ` [${hint}]`;
+   const name = cleaned(node.name);
+   if (name) line += ` ${JSON.stringify(name)}`;
++  const controlHint = cleaned(node.hint);
++  if (controlHint) line += ` hint=${JSON.stringify(controlHint.slice(0, 96))}`;
+   if (context.length > 0) line += ` [ctx: ${context.join(" > ")}]`;
+ 
+   // For link nodes with an external href, annotate so the agent can
+diff --git a/packages/vom/src/types.ts b/packages/vom/src/types.ts
+index a193b70..bd6fd10 100644
+--- a/packages/vom/src/types.ts
++++ b/packages/vom/src/types.ts
+@@ -31,6 +31,8 @@ export interface VomNode {
+ 
+   role?: string;
+   name?: string;
++  /** Bounded DOM hint, separate from the browser's accessible name. */
++  hint?: string;
+   value?: string;
+   /** Checked state is separate from the control's submitted value. */
+   checked?: boolean | "mixed";

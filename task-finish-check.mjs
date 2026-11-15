@@ -126,6 +126,13 @@ sandbox.document = documentWith([field({ type: 'checkbox', checked: true, defaul
 assert.equal(vm.runInContext('dshPageNeedsPreserving()', sandbox), true);
 sandbox.document = { ...documentWith([]), readyState: 'loading' };
 assert.equal(vm.runInContext('dshPageNeedsPreserving()', sandbox), true);
+// Chrome's closed-shadow helper accepts HTMLElement, not decorative SVGElement.
+// A normal SVG icon must not turn every disposable page into unknown content.
+sandbox.HTMLElement = class HTMLElement {};
+const graphic = { matches: () => false };
+sandbox.chrome.dom = { openOrClosedShadowRoot: element => { if (!(element instanceof sandbox.HTMLElement)) throw new TypeError('Expected HTMLElement'); return null; } };
+sandbox.document = { readyState: 'complete', querySelectorAll: query => query === '*' ? [graphic] : [] };
+assert.equal(vm.runInContext('dshPageNeedsPreserving()', sandbox), false);
 Object.assign(sandbox, { setTimeout, clearTimeout, guarded: { agentWindowId: 4, agentCreatedTabs: new Set([101, 102, 103, 104, 105]), observedTabs: new Set() } });
 for (const id of [101, 102, 103, 104, 105]) pages.set(id, { id, windowId: id === 104 ? 88 : 4, url: id === 105 ? 'about:blank' : 'https://example.com/form' });
 const inspected = [];

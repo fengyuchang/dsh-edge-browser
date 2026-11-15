@@ -28,7 +28,7 @@ function dshPageNeedsPreserving() {
     }
     for (const el of root.querySelectorAll('*')) {
       if (el.matches('browser-skill-overlay,[data-bsk-overlay]')) continue;
-      const shadow = el.shadowRoot || globalThis.chrome?.dom?.openOrClosedShadowRoot?.(el);
+      const shadow = el.shadowRoot || (el instanceof HTMLElement ? globalThis.chrome?.dom?.openOrClosedShadowRoot?.(el) : undefined);
       if (shadow && visit(shadow)) return true;
     }
     return false;

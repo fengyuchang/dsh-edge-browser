@@ -14,7 +14,36 @@ not fetch HTML just to replace a usable ref with a selector. A known
 CSS selector can find a node that will appear or be replaced; it checks only the
 first match in the main document, so scope it to the intended component. Do not
 invent selectors: inspect bounded HTML if the current observation lacks one.
-Only CSS selectors are supported, not `text=...`, XPath, or Playwright locators.
+Targets accept refs, CSS and exact main-document semantic locators:
+`role=button[name="Submit"]`, `label=Email`, `text=Next`, `placeholder=Search`,
+`testid=submit`. Multiple matches refuse without input. Role/label use browser
+accessibility names; DOM text/attribute lookup is bounded. Use observed refs for
+frames/shadow roots. XPath and arbitrary Playwright locators are unsupported.
+An icon `hint=` is DOM evidence, not an accessible name; use its ref.
+
+## Small decided sequences
+
+`bsk_interact(action="batch", session=..., contextId=..., steps=[...])` accepts
+1..8 steps. Every step needs `action` and `target`; fill needs `value`, press
+needs `key`, select needs `values`, wheel uses `deltaX`/`deltaY`. Supported actions:
+click, fill, press, select, hover, wheel, scroll-to. Each step may carry `expect`.
+Session/tab/context overrides inside steps are rejected before the first action.
+The outer timeoutMs is 1000..60000, default 30000.
+
+Use it for actions already justified by the current page, not decisions needing
+unseen intermediate results. The owned queue is held across steps; native step
+performs each action once and returns a fresh context for the next.
+Failure, human intervention or deadline stops remaining steps. The final receipt
+includes completed count, step status and the last observation without echoing
+submitted values. Later failure does not roll back earlier actions. Inspect the
+actual state after partial/cancelled receipts; never replay the batch.
+Use single step with untilVisible for conditional asynchronous readiness.
+
+`bsk_session(action="diagnose", session=...)` reports runtime vs installed package,
+CLI/core protocol and active extension revision. Before a task exists it reports
+core connectivity; extension revision needs an owned active session. Bounded
+owned queue/command/total timings retain no target text, URLs, values or images.
+It never upgrades or reloads components.
 
 States are `visible` (default), `hidden` (absent or not visible), `attached`, and
 `detached` (absent). Visibility does not guarantee enabled state or actionability.

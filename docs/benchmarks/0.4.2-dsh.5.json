@@ -1,0 +1,133 @@
+{
+  "date": "2026-11-15",
+  "platform": "Windows x64",
+  "version": "0.4.2-dsh.5",
+  "candidate": {
+    "name": "vercel-labs/agent-browser",
+    "version": "0.43.0",
+    "sha256": "ebcef5ebea93c7ccf0fe3f8c18eee908ae9174dfef8e52a3dda6f24a59f630dc"
+  },
+  "method": {
+    "browser": "Same installed Microsoft Edge executable, independent fresh headless profiles",
+    "page": "Same synthetic local page",
+    "warmups": 2,
+    "samples": 10,
+    "order": "Alternating",
+    "timingUnit": "milliseconds",
+    "excludes": "Model inference, model tool round trips and external network",
+    "dshObservation": "Native step synchronizes and validates after each action",
+    "candidateObservation": "Direct CDP batch followed by one compact snapshot",
+    "scope": "Paths differ in intermediate observation, extension collaboration and ownership checks; not an equal-protection engine benchmark"
+  },
+  "timings": [
+    {
+      "dshSeparateMs": 337.7453000000005,
+      "dshStepMs": 384.8186999999998,
+      "agentClickSnapshotMs": 70.65790000000015
+    },
+    {
+      "agentClickSnapshotMs": 68.19310000000041,
+      "dshStepMs": 258.27700000000004,
+      "dshSeparateMs": 357.96270000000004
+    },
+    {
+      "dshSeparateMs": 335.998599999999,
+      "dshStepMs": 251.3756999999987,
+      "agentClickSnapshotMs": 58.96339999999873
+    },
+    {
+      "agentClickSnapshotMs": 59.95380000000114,
+      "dshStepMs": 251.17009999999937,
+      "dshSeparateMs": 409.14819999999963
+    },
+    {
+      "dshSeparateMs": 294.8315999999995,
+      "dshStepMs": 248.71249999999964,
+      "agentClickSnapshotMs": 61.55079999999907
+    },
+    {
+      "agentClickSnapshotMs": 62.96129999999903,
+      "dshStepMs": 262.8030999999992,
+      "dshSeparateMs": 308.5545000000002
+    },
+    {
+      "dshSeparateMs": 316.15429999999833,
+      "dshStepMs": 266.1772000000001,
+      "agentClickSnapshotMs": 59.51100000000042
+    },
+    {
+      "agentClickSnapshotMs": 58.36369999999988,
+      "dshStepMs": 258.0079999999998,
+      "dshSeparateMs": 298.9285999999993
+    },
+    {
+      "dshSeparateMs": 294.71229999999923,
+      "dshStepMs": 256.33180000000175,
+      "agentClickSnapshotMs": 62.061399999998685
+    },
+    {
+      "agentClickSnapshotMs": 60.162600000001476,
+      "dshStepMs": 253.63730000000032,
+      "dshSeparateMs": 315.09890000000087
+    }
+  ],
+  "sequences": [
+    {
+      "dshIndividualMs": 574.5701000000008,
+      "dshBatchMs": 647.3228000000017,
+      "agentBatchMs": 85.17079999999987
+    },
+    {
+      "agentBatchMs": 79.1900999999998,
+      "dshBatchMs": 619.2288999999982,
+      "dshIndividualMs": 605.968499999999
+    },
+    {
+      "dshIndividualMs": 607.2323000000033,
+      "dshBatchMs": 590.6255999999994,
+      "agentBatchMs": 73.7474000000002
+    },
+    {
+      "agentBatchMs": 65.41770000000179,
+      "dshBatchMs": 582.2417999999998,
+      "dshIndividualMs": 606.4147999999986
+    },
+    {
+      "dshIndividualMs": 598.8646000000008,
+      "dshBatchMs": 608.2285999999986,
+      "agentBatchMs": 78.74689999999828
+    },
+    {
+      "agentBatchMs": 65.1218000000008,
+      "dshBatchMs": 601.0139999999992,
+      "dshIndividualMs": 579.3536999999997
+    },
+    {
+      "dshIndividualMs": 604.9457000000002,
+      "dshBatchMs": 576.9940000000024,
+      "agentBatchMs": 79.76870000000054
+    },
+    {
+      "agentBatchMs": 72.65799999999945,
+      "dshBatchMs": 576.5103999999992,
+      "dshIndividualMs": 563.9445000000014
+    },
+    {
+      "dshIndividualMs": 561.9851000000017,
+      "dshBatchMs": 577.0519000000022,
+      "agentBatchMs": 71.48760000000038
+    },
+    {
+      "agentBatchMs": 72.41380000000208,
+      "dshBatchMs": 596.2124000000003,
+      "dshIndividualMs": 579.7546999999977
+    }
+  ],
+  "callCounts": {
+    "threeActions": {
+      "dshIndividual": 3,
+      "dshBatch": 1,
+      "agentBatch": 1
+    }
+  }
+}

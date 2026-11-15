@@ -22,7 +22,8 @@ fs.cpSync(path.join(root,'source/extension'),path.join(extension,'src/dsh'),{rec
 fs.cpSync(path.join(root,'source/content'),path.join(extension,'src/dsh/content'),{recursive:true});
 for(const file of ['dsh-annotations.mjs','dsh-session-scope.mjs','dsh-task-finish.mjs','dsh-preview.mjs','dsh-annotation-client.js'])fs.copyFileSync(path.join(root,'harness',file),path.join(native,'src',file));
 fs.cpSync(path.join(root,'harness/skill'),path.join(native,'skill'),{recursive:true});
-const env={...process.env,BSK_DAEMON_WS_URL:option('--ws')??'ws://127.0.0.1:52800',BSK_DSH_HTTP_BASE:option('--harness')??'http://127.0.0.1:3080'};
+fs.writeFileSync(path.join(native,'src/dsh-build-info.ts'),'export const DSH_BUILD_VERSION='+JSON.stringify(version)+';\n');
+const env={...process.env,BSK_DSH_VERSION:version,BSK_DAEMON_WS_URL:option('--ws')??'ws://127.0.0.1:52800',BSK_DSH_HTTP_BASE:option('--harness')??'http://127.0.0.1:3080'};
 const pnpm=(args)=>process.env.PNPM_JS?run(process.execPath,[process.env.PNPM_JS,...args],{env}):run(process.platform==='win32'?'pnpm.cmd':'pnpm',args,{env,shell:process.platform==='win32'});
 pnpm(['install','--frozen-lockfile',...(process.env.PNPM_STORE?['--store-dir',process.env.PNPM_STORE]:[])]);
 pnpm(['--filter','@browser-skill/extension','build']);

@@ -1,16 +1,16 @@
 {
   "upstream": "fbea9e8a191e05971015df13c79b23fc1ceaba14",
-  "version": "0.4.2-dsh.4",
+  "version": "0.4.2-dsh.5",
   "ws": "ws://127.0.0.1:52800",
   "harness": "http://127.0.0.1:3080",
-  "builtAt": "2026-11-08T05:03:30.444Z",
+  "builtAt": "2026-11-15T06:43:58.117Z",
   "inputs": {
-    "source/browser-skill.patch": "b92b3ebd4831e2cf5231a3348cb4dc435e4535bdd924d88b423cd6cdaa94bad4",
+    "source/browser-skill.patch": "a0455c5f4624af8645e7b3e061ef2ee2643799ba5205bf74b9a0c17ea971effb",
     "source/content/dsh-controls.js": "2e4300ae5aaf23e69b9a998de2fb994e12e6b2a64c4b1b8f2b5ef9068564541b",
     "source/content/dsh-pointer.js": "7314b9ad9dcf19d90efde50de953c3805f8cade9fd19e487891b39e195322b6d",
     "source/extension/dsh-annotations.js": "41b0329384f8e3ef48dd863387822f3be63e35780240191488fb4018dfd92566",
     "source/extension/dsh-pointer-relay.js": "6885688759c542012e92add0d79903e9fd40f8d4b059a292609211505725f7c6",
-    "source/extension/dsh-task-finish.js": "5d6b5bb57c9c20ea4ef1dcac3a0ae89c7d04ec5aa2bf8fcf175a3947174790d9",
+    "source/extension/dsh-task-finish.js": "87a5b25f3d705bcc1cd0daa29c97f2758c833d512d13291d040a1c64f6ca49d7",
     "source/extension/dsh-task-groups.js": "27e0f9dd7932853f7a3e013f09da60bd267afc179910476f1d8668a6aa2dbf32",
     "source/extension/dsh-visual-activity.js": "5f4e8ee1f7b65128375b3e2f3b33b8c4a48b7a1415ec26ad2013c6ed68d8c194",
     "source/extension/globals.d.ts": "f75dedcb393fe9860cb7580ce805774ed4cf52bd0368ee7712678f56c45ab6dc",
@@ -18,28 +18,28 @@
     "harness/dsh-annotation-client.js": "857027fb8b2a7a60aad9395ef0fe322245a5a614436c897bb4ad349ba9d7cb71",
     "harness/dsh-annotations.mjs": "9a694fef3dd3f2b5bbd3c75502b1e61f87fbe6c57e0d5559a97d0e81f8d154c5",
     "harness/dsh-preview.mjs": "f30ef5279455b1c98d605c2580a32e4ecf60877ad5fb1258360e63d623c9ba74",
-    "harness/dsh-session-scope.mjs": "28802a590052e6398da2eb0468badb36c6ee5d2d4a754c80a86dc31038073296",
+    "harness/dsh-session-scope.mjs": "471ded0ed0887c5a1db041134a7fcad300acd107888ebbbdb4e78c2bbd16f8c5",
     "harness/dsh-task-finish.mjs": "a33f80750c19a4db933a01c392142f637306945e75ce0f5b71361f5b5682614b",
     "harness/LICENSE.dsh-doyourweb.txt": "a858db4806d0d3162cc120dc9cebb73c244dd919ef4ddd71a40952b3ae22eb42",
     "harness/skill/references/cooperation.md": "3d46fdc14fce39da36a32a179c50692d9be06ee3a620d8eaa3c208026476b5ea",
     "harness/skill/references/debugging.md": "3b5305b98490f0e1176e2fa7e878df052094f656e7711c2b6dc17565d7891e92",
     "harness/skill/references/dsh-workflow.md": "4bc832f003aee5487a27abe3967ba3388a1cd2900d825c13105411a4beeefd82",
     "harness/skill/references/help-and-recovery.md": "4bedea783368e76cc1cff923f119dc36c206fed4875fdcff4f3d3941ed92d593",
-    "harness/skill/references/interaction-details.md": "582b132f5ec3e33d40dd00482efed998204aa99184348a1ddd82c1af70243890",
+    "harness/skill/references/interaction-details.md": "8ac80b90d06f0990c706c83b32c1f2783eb11521117c63068d61e0c32b9a828f",
     "harness/skill/references/native-dialogs.md": "f3a2f8b146e1be66c7d7496d5e051cf8a874dd4b45de2f82ff98d6c76388a441",
     "harness/skill/references/screenshots-and-canvas.md": "eca3557757db606f74c6fbb9d50d330f0552ad8a2aad4dd2df5a22f9ede3adb1",
     "harness/skill/references/tabs-and-profiles.md": "6fe90dffef6b7d93f9b6122c3160f80f4e9d745478284cd75b16ef1d3836cb60",
     "harness/skill/references/video.md": "8fdba406616200753bdbafb11c73c02ce5888e4372b9dbab1ca7d20e39cb56d9",
-    "harness/skill/SKILL.md": "7d853381cd6cc4c46ce91ca9867fde76ace9de11da2a2e30a5e331703488466f",
-    "scripts/build-source.mjs": "5c38091893d00d746b05be0e8add6c43f97eb0daabe308eaf6949084dd524e03"
+    "harness/skill/SKILL.md": "c11e259e1ab2e73827e4d599499c271cbdabead48b582559c50c7045d8223d8d",
+    "scripts/build-source.mjs": "abac6c22e43459b70134f7894f37ef9409b1e87c1963200e7fb341ad824e2826"
   },
   "outputs": {
-    "extension/background.js": "52c406709ca7a6d0833cc8e9f4679c7756c67b4a2f7a5f55ac255f81b7bf6575",
+    "extension/background.js": "3b32b01de95a5e90d0d75b5203d5d326da6602878a86ac3bd2328c4fa5d2e39c",
     "extension/content-scripts/content.js": "688b3f273fcca488dd46a571c3242f76b4a5f6dcfd4dd09c992794d8f4f8ed55",
     "extension/content-scripts/dsh-pointer.js": "7314b9ad9dcf19d90efde50de953c3805f8cade9fd19e487891b39e195322b6d",
     "extension/content-scripts/dsh-controls.js": "2e4300ae5aaf23e69b9a998de2fb994e12e6b2a64c4b1b8f2b5ef9068564541b",
-    "packages/browser-skill-dsh-plugin/lib/index.mjs": "2074dd99af5b75cb57910a015266c90c0efda97b973dc8dd5dc9ec4b6fdba395",
-    "packages/browser-skill-dsh-plugin/lib/client.cjs": "b5845b0b5b038b75adde082775f3d42555d707008b463e68717bc721bcc3fce6",
-    "packages/browser-skill-dsh-plugin/skill/SKILL.md": "7d853381cd6cc4c46ce91ca9867fde76ace9de11da2a2e30a5e331703488466f"
+    "packages/browser-skill-dsh-plugin/lib/index.mjs": "ccfe18b44ad4e934aa682b77fa8868d505649ccdbf089ef0143f71ad6ed2af62",
+    "packages/browser-skill-dsh-plugin/lib/client.cjs": "bf3c1a251fd61adafdb734363f121bf6ad5a345bd7d9b01c22525cc8e497b1c8",
+    "packages/browser-skill-dsh-plugin/skill/SKILL.md": "c11e259e1ab2e73827e4d599499c271cbdabead48b582559c50c7045d8223d8d"
   }
 }

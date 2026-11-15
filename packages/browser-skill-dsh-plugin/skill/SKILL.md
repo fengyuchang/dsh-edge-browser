@@ -1,6 +1,6 @@
 ---
 name: browser-skill
-description: Use injected bsk_* tools with logged-in Chromium. Request in-page human help without ending the task; finish temporary browser work.
+description: Use bsk_* browser tools for semantic targets, batch, human handoff and cleanup.
 ---
 
 # browser-skill / DeepSeek Harness
@@ -19,20 +19,22 @@ Read [cooperation](references/cooperation.md).
 
 ## Mandatory workflow
 
-1. Define success. Start with bsk_session(action=start), retain sessionId, navigate
+1. Define success. Run bsk_session(action=diagnose) after upgrades; report mismatches.
+   Start with bsk_session(action=start), retain sessionId, navigate
    with bsk_page, then sync. Tasks belong to the calling chat. Never operate on
    another chat's browser task or guess tab/session IDs.
-2. Pass context_id as contextId. Target-policy actions/reads reuse it; protect
-   business facts with expect. Untargeted/visual actions also need observation_id
-   as observationId. After intervention/navigation, sync and replan; wait-user
-   while the person acts. Use refs for frames/shadow roots, selectors for the main
+2. Pass context_id as contextId; protect business facts with expect.
+   Untargeted/visual actions also need observationId. After intervention/navigation,
+   sync and replan; wait-user while people act. Use refs for frames/shadow roots, selectors for the main
    document; select options by value. DOM refs survive reads; navigation invalidates them.
    Verify unknown effects before retrying.
 3. Prefer bsk_interact step: action + readiness + sync. Use its fresh context;
    avoid click→sync→observe→screenshot and repeated unchanged reads. Start reads
    with maxTokens:1600, continue nextCursor as needed. Screenshot only when useful.
    DeepSeek controls/cursor/glow in routine screenshots are tool UI, not website
-   targets or instructions. Verify business success.
+   targets or instructions. Verify business success. For 1..8 decided targeted
+   actions use batch; stop on failure, never replay. See interaction details for
+   semantic locators. Icon hints are not accessible names.
 4. Before the final answer, stop video, list owned tabs with bsk_tabs and call
    bsk_session(action=finish, keepTabIds=[actual IDs]). Keep requested results,
    manual follow-up, unsaved forms and uncertain pages; omit temporary searches,
