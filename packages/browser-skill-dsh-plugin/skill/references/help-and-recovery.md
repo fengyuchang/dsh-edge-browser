@@ -49,3 +49,9 @@ backends to bypass limits. Borrow confirmation still applies.
 - Unconfirmed fill: read the field. Formatting may satisfy the goal; correct only a
   remaining difference instead of blindly refilling or requesting help.
 - Other errors: follow the hint; on unrecoverable failure, report and stop the owned session.
+## 后台读取与加载诊断
+
+- 更新后用 `bsk_session(action=diagnose)` 核对运行版本；旧 action 枚举不含 diagnose/batch 时，宿主插件或聊天工具 schema 尚未更新。只重载 Edge 不能替代 Harness 的 BrowserSkill 重载。
+- 未知 ref 表示未观察到、已失效或不属此标签，不代表元素不存在；增加观察预算并使用实际返回引用。语义 locator 未匹配时检查准确名称，不拼接猜测。
+- `@view 0x0` 或 `viewport unavailable` 可能是捕获失败，不代表空页面；等候后同步，不自动激活窗口。仍不可测量时报告错误并保留需要人工处理的页面，避免循环重试。
+- 取消结束读取等待后，Chrome 仍可能持有旧命令。迟到回执不授权继续动作；原命令未结束前的读取拒绝是保护。待它结束后重新同步；一直无响应时仅回收自己的任务。不要重放不确定的点击或提交。

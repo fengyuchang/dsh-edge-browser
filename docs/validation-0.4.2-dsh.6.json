@@ -1,0 +1,114 @@
+{
+  "version": "0.4.2-dsh.6",
+  "date": "2026-11-15",
+  "scope": "Independent local fixture, browser profiles, daemon and synthetic Harness owners; no real chat inputs or daily login data",
+  "tests": {
+    "extension": {
+      "passed": 3723,
+      "skipped": 425
+    },
+    "native": {
+      "passed": 721,
+      "skipped": 10
+    },
+    "typechecks": "passed both sides"
+  },
+  "backgroundScenarios": [
+    {
+      "mode": "Independent headless Edge",
+      "status": "passed",
+      "initialWindowState": "minimized",
+      "viewport": {
+        "width": 1250,
+        "height": 798
+      },
+      "restoredOrActivatedForTest": false,
+      "cases": [
+        "noFocus task starts minimized with measurable viewport; never restored or brought forward",
+        "Hidden label and role locators work after an observation that releases accessibility",
+        "Unknown refs and absent literal targets have distinct no-input failures",
+        "8 same/early-click cross-site navigations synchronize without replay or permanent settling",
+        "Cancelled in-flight AX read releases operation ownership, gates pending Chrome reads and never sends late input",
+        "When original Chrome read settles, sync and next explicit action recover without stopping session",
+        "Injected unavailable geometry reports viewport warning and recovers after fresh read without activation",
+        "Compiled native/active extension revisions agree in synthetic host"
+      ],
+      "navigationAttempts": 8,
+      "successfulNavigationReceipts": 8,
+      "navigationsResynchronized": 8,
+      "cancelledLookupDidNotSendLateInput": true,
+      "cachedSyncWhileChromeReadPending": true,
+      "newCaptureRefusedWhileChromeReadPending": true,
+      "versions": {
+        "pluginVersion": "0.4.2-dsh.6",
+        "extension": {
+          "integrationVersion": "0.4.2-dsh.6",
+          "runtimeMatchesPlugin": true
+        },
+        "cli": {
+          "version": "0.4.2",
+          "expected": "0.4.2",
+          "compatible": true
+        }
+      },
+      "desktopSamples": 58,
+      "desktopViolations": 0
+    },
+    {
+      "mode": "Headful Edge on inactive Windows desktop, no startup window size",
+      "status": "passed",
+      "initialWindowState": "minimized",
+      "viewport": {
+        "width": 1258,
+        "height": 809
+      },
+      "restoredOrActivatedForTest": false,
+      "cases": [
+        "noFocus task starts minimized with measurable viewport; never restored or brought forward",
+        "Hidden label and role locators work after an observation that releases accessibility",
+        "Unknown refs and absent literal targets have distinct no-input failures",
+        "8 same/early-click cross-site navigations synchronize without replay or permanent settling",
+        "Cancelled in-flight AX read releases operation ownership, gates pending Chrome reads and never sends late input",
+        "When original Chrome read settles, sync and next explicit action recover without stopping session",
+        "Injected unavailable geometry reports viewport warning and recovers after fresh read without activation",
+        "Compiled native/active extension revisions agree in synthetic host"
+      ],
+      "navigationAttempts": 8,
+      "successfulNavigationReceipts": 8,
+      "navigationsResynchronized": 8,
+      "cancelledLookupDidNotSendLateInput": true,
+      "cachedSyncWhileChromeReadPending": true,
+      "newCaptureRefusedWhileChromeReadPending": true,
+      "versions": {
+        "pluginVersion": "0.4.2-dsh.6",
+        "extension": {
+          "integrationVersion": "0.4.2-dsh.6",
+          "runtimeMatchesPlugin": true
+        },
+        "cli": {
+          "version": "0.4.2",
+          "expected": "0.4.2",
+          "compatible": true
+        }
+      },
+      "desktopSamples": 58,
+      "desktopViolations": 0
+    }
+  ],
+  "existingControlRegression": {
+    "status": "passed",
+    "cases": 22,
+    "clickScreenshotCycles": 8,
+    "flicker": {
+      "hiddenFrames": 0,
+      "frames": 431,
+      "hiddenAttributes": 0,
+      "removed": 0
+    }
+  },
+  "limitations": [
+    "Natural daily-profile 0x0 viewport was not reproduced. An injected unavailable-metrics response tested the warning and subsequent read recovery.",
+    "Headful test used an inactive Windows desktop and fresh profile; it does not prove every daily-profile/window-manager condition.",
+    "Cancelling a read ends the caller wait, not the native Chrome command. New captures remain gated until the original command settles or its attachment detaches."
+  ]
+}

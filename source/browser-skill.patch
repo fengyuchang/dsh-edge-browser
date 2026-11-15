@@ -1,15 +1,52 @@
+diff --git a/apps/extension/src/browser-driver/__tests__/chromium-cdp.test.ts b/apps/extension/src/browser-driver/__tests__/chromium-cdp.test.ts
+index 3d475fa..4a93c5f 100644
+--- a/apps/extension/src/browser-driver/__tests__/chromium-cdp.test.ts
++++ b/apps/extension/src/browser-driver/__tests__/chromium-cdp.test.ts
+@@ -38,6 +38,29 @@ afterEach(() => {
+ });
+ 
+ describe("ChromiumCdp", () => {
++  it.each(["send", "sendGuarded"] as const)("cancels an in-flight %s read without allowing late reads through", async (method) => {
++    const { api } = fakeApi();
++    const driver = new ChromiumCdp(api);
++    let finish!: () => void, dispatched!: () => void;
++    const started = new Promise<void>(resolve => { dispatched = resolve; });
++    vi.mocked(api.sendCommand).mockImplementation(async (_target, name) => {
++      if (name !== "DOM.getDocument") return {};
++      dispatched();
++      return new Promise<object>(resolve => { finish = () => resolve({}); });
++    });
++    const abort = new AbortController();
++    const work = method === "send"
++      ? driver.send(7, "DOM.getDocument", {}, abort.signal)
++      : driver.sendGuarded({ tabId: 7 }, "DOM.getDocument", {}, { signal: abort.signal });
++    const cancelled = expect(work).rejects.toThrow("test cancellation");
++    await started; abort.abort(new DOMException("test cancellation", "AbortError"));
++    await cancelled;
++    await expect(driver.send(7, "Page.getLayoutMetrics", {})).rejects.toThrow("still pending");
++    await expect(driver.send(8, "Page.getLayoutMetrics", {})).resolves.toEqual({});
++    finish(); await new Promise(resolve => setTimeout(resolve, 0));
++    await expect(driver.send(7, "Page.getLayoutMetrics", {})).resolves.toEqual({});
++    await driver.detachAll();
++  });
+   it.each([
+     "abort",
+     "replacement",
 diff --git a/apps/extension/src/browser-driver/chromium-cdp.ts b/apps/extension/src/browser-driver/chromium-cdp.ts
-index 9da254e..6157049 100644
+index 9da254e..338d89f 100644
 --- a/apps/extension/src/browser-driver/chromium-cdp.ts
 +++ b/apps/extension/src/browser-driver/chromium-cdp.ts
-@@ -32,6 +32,7 @@ import type {
+@@ -32,8 +32,9 @@ import type {
    NetworkResult,
    PendingJavaScriptDialog,
  } from "@/transport/types";
 +import { dshCdpCommand } from "@/dsh/dsh-pointer-relay.js";
  import { BackgroundExecution } from "./background-execution";
- import { CdpReadGate, CdpReadTimeoutError, READ_TIMEOUT_MS } from "./command-deadline";
+-import { CdpReadGate, CdpReadTimeoutError, READ_TIMEOUT_MS } from "./command-deadline";
++import { CdpReadGate, CdpReadTimeoutError, READ_TIMEOUT_MS, isRendererRead } from "./command-deadline";
  import {
+   buildFrameGraph,
+   type CdpFrameGraph,
 @@ -87,7 +88,7 @@ export const chromeDebuggerApi: CdpDebuggerApi = {
    attach: (target, version) => chrome.debugger.attach(target, version),
    detach: (target) => chrome.debugger.detach(target),
@@ -19,6 +56,42 @@ index 9da254e..6157049 100644
    get onEvent() {
      return chrome.debugger.onEvent;
    },
+@@ -375,7 +376,7 @@ export class ChromiumCdp {
+     await this.ensureAttached(tabId);
+     signal?.throwIfAborted();
+     try {
+-      const result = await this.command({ tabId }, method, params ?? {});
++      const result = await this.command({ tabId }, method, params ?? {}, undefined, undefined, isRendererRead(method) ? signal : undefined);
+       return result as T;
+     } catch (err) {
+       throw normalizeError(err);
+@@ -413,7 +414,7 @@ export class ChromiumCdp {
+         )
+           throw new Error("Debugger attachment changed before dispatch");
+         guard.onDispatch?.();
+-      })) as T;
++      }, isRendererRead(method) ? guard.signal : undefined)) as T;
+     } catch (err) {
+       throw normalizeError(err);
+     }
+diff --git a/apps/extension/src/browser-driver/command-deadline.ts b/apps/extension/src/browser-driver/command-deadline.ts
+index f3b4ad2..fa9cd98 100644
+--- a/apps/extension/src/browser-driver/command-deadline.ts
++++ b/apps/extension/src/browser-driver/command-deadline.ts
+@@ -13,6 +13,13 @@ const RENDERER_READS = new Set([
+   "Accessibility.enable",
+   "Accessibility.disable",
+   "Accessibility.getFullAXTree",
++  "Accessibility.queryAXTree",
++  "DOM.getDocument",
++  "DOM.querySelector",
++  "DOM.describeNode",
++  "DOM.resolveNode",
++  "DOM.getBoxModel",
++  "DOM.getContentQuads",
+   "Page.getLayoutMetrics",
+   "Page.getFrameTree",
+   "DOM.getFrameOwner",
 diff --git a/apps/extension/src/content/ControlGlow.tsx b/apps/extension/src/content/ControlGlow.tsx
 index c71fab9..da5d0b6 100644
 --- a/apps/extension/src/content/ControlGlow.tsx
@@ -826,10 +899,49 @@ index 9e1882b..44b47be 100644
  @media (height <= 160px) {
    .bsk-cooperation {
      padding: 8px;
+diff --git a/apps/extension/src/cooperation/action-guard.ts b/apps/extension/src/cooperation/action-guard.ts
+index 0bb3026..8f26f81 100644
+--- a/apps/extension/src/cooperation/action-guard.ts
++++ b/apps/extension/src/cooperation/action-guard.ts
+@@ -5,6 +5,7 @@ import type { CdpRunner } from "@/tools/shared";
+ import type { InputExpectation } from "./types";
+ 
+ interface ActionGuard {
++  signal?: AbortSignal;
+   prepare?: (input?: InputExpectation, method?: string) => Promise<void>;
+   finishInput?: (input: InputExpectation) => Promise<void>;
+   dispatch?: (startsInput: boolean, method: string) => void;
+@@ -112,6 +113,8 @@ export function guardedRunner<T extends CdpRunner>(cdp: T, options: ActionGuard
+       if (cdp.sendGuarded)
+         return cdp.sendGuarded(target, method, params, {
+           ...guard,
++          ...(!release && method !== "Accessibility.disable" && !method.startsWith("Runtime.releaseObject") && (guard?.signal ?? options.signal)
++            ? { signal: guard?.signal ?? options.signal } : {}),
+           ...(release ? { signal: undefined, attachmentId: leases.get(identity) } : {}),
+           onDispatch: check,
+         });
 diff --git a/apps/extension/src/cooperation/controller.ts b/apps/extension/src/cooperation/controller.ts
-index 02d307c..b1fbd4c 100644
+index 02d307c..6bf61b0 100644
 --- a/apps/extension/src/cooperation/controller.ts
 +++ b/apps/extension/src/cooperation/controller.ts
+@@ -788,7 +788,7 @@ export class CooperationController implements ControlAuthority {
+         // A delta updates the model's field values. Refresh private semantic
+         // evidence too, without replacing refs or repeating page text to the model.
+         if (delta && !sameFields(baseline.frames, before))
+-          await captureVomObservation(guardedRunner(cdp), state.tabId, target.url, {
++          await captureVomObservation(guardedRunner(cdp, { signal }), state.tabId, target.url, {
+             signal,
+             conditionalSurfaceProbe: false,
+             onScene: (scene) => {
+@@ -801,7 +801,7 @@ export class CooperationController implements ControlAuthority {
+               this.deps.sessions,
+               { session_id: params.session_id, tab_id: state.tabId, max_tokens: params.max_tokens },
+               {
+-                cdp: guardedRunner(cdp),
++                cdp: guardedRunner(cdp, { signal }),
+                 tabsApi: chromeTabsApi,
+                 refStore,
+                 onScene: (scene) => {
 @@ -1176,6 +1176,7 @@ export class CooperationController implements ControlAuthority {
          const result = await invoke(cdp);
          const outcome = (result as { outcome?: string } | undefined)?.outcome;
@@ -838,6 +950,77 @@ index 02d307c..b1fbd4c 100644
          if (outcome === "continued" || outcome === "completed") {
            this.preserve(state);
            await this.deps.resumeFrames(state.tabId, state.lease, state.frameRepairs);
+@@ -1196,7 +1197,7 @@ export class CooperationController implements ControlAuthority {
+         ["start", "stop", "status", "read", "list", "capabilities"].includes(action ?? ""))
+     ) {
+       req.params = { ...params, tab_id: params.tab_id ?? this.defaultTabs.get(session.sessionId) };
+-      return invoke(guardedRunner(cdp));
++      return invoke(guardedRunner(cdp, { signal }));
+     }
+     const bound = params.context_id
+       ? [...this.tabs.values()].find(
+@@ -1226,7 +1227,7 @@ export class CooperationController implements ControlAuthority {
+     if (isRpcError(target)) return target;
+     req.params = { ...params, tab_id: target.tabId };
+     if (!isAgentControlledTab(session, target.tabId)) {
+-      if (read) return invoke(guardedRunner(cdp));
++      if (read) return invoke(guardedRunner(cdp, { signal }));
+       return failure("Actions require an owned task tab; borrow user tabs explicitly");
+     }
+     const state = this.track(session, target.tabId);
+@@ -1251,7 +1252,7 @@ export class CooperationController implements ControlAuthority {
+         };
+       return this.bootstrap(state, req.method, cdp, signal, invoke);
+     }
+-    if (read) return invoke(guardedRunner(cdp));
++    if (read) return invoke(guardedRunner(cdp, { signal }));
+     if (state.working) return failure("Another operation is settling on this tab");
+     const expectations = parseExpectations(params.expect);
+     if (isRpcError(expectations)) return expectations;
+@@ -1393,7 +1394,7 @@ export class CooperationController implements ControlAuthority {
+         throw new Error((revoked = "Page changed; synchronize before choosing an action"));
+       const before = state.frames;
+       let evidence: ObservationEvidence | undefined;
+-      await captureVomObservation(guardedRunner(cdp), state.tabId, target.url, {
++      await captureVomObservation(guardedRunner(cdp, { signal: operationSignal }), state.tabId, target.url, {
+         signal,
+         conditionalSurfaceProbe: false,
+         onScene: (scene) => {
+@@ -1596,7 +1597,7 @@ export class CooperationController implements ControlAuthority {
+         );
+       if (!visual && (primaryTarget?.ref || primaryTarget?.selector)) {
+         const resolved = await resolveActionTarget(
+-          guardedRunner(cdp),
++          guardedRunner(cdp, { signal: operationSignal }),
+           session,
+           target,
+           primaryTarget,
+@@ -1615,7 +1616,7 @@ export class CooperationController implements ControlAuthority {
+       }
+       if (req.method === "tool.drag" && (params.target?.ref || params.target?.selector)) {
+         const resolved = await resolveActionTarget(
+-          guardedRunner(cdp),
++          guardedRunner(cdp, { signal: operationSignal }),
+           session,
+           target,
+           params.target,
+@@ -1648,7 +1649,7 @@ export class CooperationController implements ControlAuthority {
+           evidenceTargets = [];
+           for (const dependency of params.depends_on) {
+             const resolved = await resolveActionTarget(
+-              guardedRunner(cdp),
++              guardedRunner(cdp, { signal: operationSignal }),
+               session,
+               target,
+               /^@?e\d+$/.test(dependency) ? { ref: dependency } : { selector: dependency },
+@@ -1693,6 +1694,7 @@ export class CooperationController implements ControlAuthority {
+       this.changed(state);
+       let result = await invoke(
+         guardedRunner(cdp, {
++          signal: operationSignal,
+           scriptedEffect: req.method === "tool.evaluate",
+           prepare: async (input, method) => {
+             assert();
 diff --git a/apps/extension/src/debug/capabilities.ts b/apps/extension/src/debug/capabilities.ts
 index aa0f904..7f2f9c1 100644
 --- a/apps/extension/src/debug/capabilities.ts
@@ -1442,10 +1625,10 @@ index 7d8e73d..7955e02 100644
  });
 diff --git a/apps/extension/src/tools/__tests__/semantic-selector.test.ts b/apps/extension/src/tools/__tests__/semantic-selector.test.ts
 new file mode 100644
-index 0000000..4d31a31
+index 0000000..7a8d782
 --- /dev/null
 +++ b/apps/extension/src/tools/__tests__/semantic-selector.test.ts
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,52 @@
 +import { afterEach, describe, expect, it, vi } from "vitest";
 +import { parseSemanticSelector, resolveSemanticSelector } from "../semantic-selector";
 +import type { CdpRunner } from "../shared";
@@ -1461,15 +1644,24 @@ index 0000000..4d31a31
 +  });
 +  it("uses browser accessibility names, excludes ignored nodes and refuses ambiguity", async () => {
 +    let nodes = [{ ignored: true, backendDOMNodeId: 9, role: { value: "button" }, name: { value: "Go" } }, { backendDOMNodeId: 2, role: { value: "button" }, name: { value: "Go" } }];
-+    const send = vi.fn(async () => ({ nodes })), cdp = { send } as unknown as CdpRunner;
++    const send = vi.fn(async (_tab: number, _method: string, _params?: object) => ({ nodes })), cdp = { send } as unknown as CdpRunner;
 +    expect(await resolveSemanticSelector(cdp, 1, 7, 'role=button[name="Go"]')).toMatchObject({ backendNodeId: 2, cdpTarget: { tabId: 1 } });
-+    expect(send).toHaveBeenCalledWith(1, "Accessibility.queryAXTree", { nodeId: 7, role: "button", accessibleName: "Go" });
++    expect(send.mock.calls.map(call => call[1])).toEqual(["Accessibility.enable", "Accessibility.getFullAXTree", "Accessibility.disable"]);
 +    nodes = [...nodes, { backendDOMNodeId: 3, role: { value: "button" }, name: { value: "Go" } }];
 +    expect(await resolveSemanticSelector(cdp, 1, 7, "role=button[name=Go]")).toMatchObject({ code: "invalid_params" });
 +  });
 +  it("label lookup selects the associated control rather than its static label text", async () => {
 +    const cdp = { send: async () => ({ nodes: [{ backendDOMNodeId: 2, role: { value: "StaticText" }, name: { value: "Email" } }, { backendDOMNodeId: 3, role: { value: "textbox" }, name: { value: "Email" } }] }) } as unknown as CdpRunner;
 +    expect(await resolveSemanticSelector(cdp, 1, 7, "label=Email")).toMatchObject({ backendNodeId: 3 });
++  });
++  it("releases only the original accessibility attachment after a failed lookup", async () => {
++    const send = vi.fn(async (_tab: number, method: string) => {
++      if (method === "Accessibility.getFullAXTree") throw new Error("renderer unavailable");
++      return {};
++    });
++    const cdp = { send, getAttachmentId: () => "original", sendGuarded: vi.fn(async () => ({})) } as unknown as CdpRunner;
++    await expect(resolveSemanticSelector(cdp, 1, 7, "label=Email")).rejects.toThrow("renderer unavailable");
++    expect(cdp.sendGuarded).toHaveBeenCalledWith({ tabId: 1 }, "Accessibility.disable", {}, { attachmentId: "original" });
 +  });
 +  it("literal DOM lookup ignores hidden duplicates and releases only its own object", async () => {
 +    document.body.innerHTML = '<button style="display:none">Next</button><button data-testid="next"><span>Next</span></button><input placeholder="Search">';
@@ -1489,6 +1681,37 @@ index 0000000..4d31a31
 +    expect((globalThis as { injected?: boolean }).injected).toBeUndefined();
 +  });
 +});
+diff --git a/apps/extension/src/tools/__tests__/snapshot-ref.test.ts b/apps/extension/src/tools/__tests__/snapshot-ref.test.ts
+index 13f43e9..f0c7302 100644
+--- a/apps/extension/src/tools/__tests__/snapshot-ref.test.ts
++++ b/apps/extension/src/tools/__tests__/snapshot-ref.test.ts
+@@ -72,7 +72,7 @@ describe("resolveSnapshotRef", () => {
+     expect(res).toMatchObject({
+       code: "not_found",
+       data: { reason: "ref_not_found" },
+-      message: "ref @e99 unknown for tab 4 in session aa11",
++      message: expect.stringContaining("ref @e99 unknown for tab 4 in session aa11; it was not observed or is stale"),
+     });
+   });
+ 
+@@ -84,7 +84,7 @@ describe("resolveSnapshotRef", () => {
+     expect(res).toMatchObject({
+       code: "not_found",
+       data: { reason: "ref_not_found" },
+-      message: "ref @e7 unknown for tab 5 in session aa11",
++      message: expect.stringContaining("ref @e7 unknown for tab 5 in session aa11; it was not observed or is stale"),
+     });
+   });
+ 
+@@ -94,7 +94,7 @@ describe("resolveSnapshotRef", () => {
+     const res = resolveSnapshotRef(ctx, "e99", 4);
+     expect(res).toMatchObject({
+       code: "not_found",
+-      message: "ref e99 unknown for tab 4 in session aa11",
++      message: expect.stringContaining("ref e99 unknown for tab 4 in session aa11; it was not observed or is stale"),
+     });
+   });
+ 
 diff --git a/apps/extension/src/tools/__tests__/viewport-screenshot.test.ts b/apps/extension/src/tools/__tests__/viewport-screenshot.test.ts
 index f5cd822..2337684 100644
 --- a/apps/extension/src/tools/__tests__/viewport-screenshot.test.ts
@@ -1751,6 +1974,19 @@ index 4f134b9..0f046d5 100644
        case "tool.console":
          return handleConsole(
            this.sessions,
+diff --git a/apps/extension/src/tools/frame-geometry.ts b/apps/extension/src/tools/frame-geometry.ts
+index c9f0b7e..2180629 100644
+--- a/apps/extension/src/tools/frame-geometry.ts
++++ b/apps/extension/src/tools/frame-geometry.ts
+@@ -181,7 +181,7 @@ export async function resolveNodeGeometry(
+       }
+     } else {
+       const viewport = await context.viewport(address.target);
+-      if (!viewport) return geometryError("could not resolve top viewport geometry");
++      if (!viewport) return geometryError("could not resolve top viewport geometry: the renderer viewport is unavailable, not proof that the target is absent. The window may be minimized/unready or its geometry read may have failed. Wait and synchronize; no input was sent.");
+       topVisibleRegions = localRegion
+         .map((polygon) =>
+           clipPolygon(polygon, rectPolygon({ x: 0, y: 0, w: viewport.width, h: viewport.height })),
 diff --git a/apps/extension/src/tools/human-loop.ts b/apps/extension/src/tools/human-loop.ts
 index 374cea5..db9db8d 100644
 --- a/apps/extension/src/tools/human-loop.ts
@@ -1816,7 +2052,7 @@ index 29bbb61..2d109d1 100644
        target.tabId,
        centre,
 diff --git a/apps/extension/src/tools/observation.ts b/apps/extension/src/tools/observation.ts
-index 13f7a84..b218c03 100644
+index 13f7a84..4625dd9 100644
 --- a/apps/extension/src/tools/observation.ts
 +++ b/apps/extension/src/tools/observation.ts
 @@ -34,7 +34,6 @@ import { readTimeoutDetails } from "@/browser-driver/command-deadline";
@@ -1897,12 +2133,23 @@ index 13f7a84..b218c03 100644
    if (isRpcError(captured)) return captured;
    if (signal?.aborted) return cancelled("screenshot");
    const image_base64 = captured;
+@@ -1023,6 +1017,10 @@ async function buildVomObservation(
+   // Reserve space using the renderer's token estimate. Like VOM
+   // headers, this integrity notice remains visible even under a tiny token budget.
+   const notices: string[] = [];
++  if (!(captured.viewport.width > 0 && captured.viewport.height > 0))
++    notices.push(
++      "@warning viewport unavailable: 0x0 is not proof of an empty page. A minimized/unready renderer or failed geometry read may cause this. Wait and synchronize; do not guess refs or automatically focus the browser.",
++    );
+   if (facts.issues.some((issue) => issue.stage === "geometry"))
+     notices.push(
+       "@warning geometry incomplete: some page or frame content has no top-level coordinates.",
 diff --git a/apps/extension/src/tools/semantic-selector.ts b/apps/extension/src/tools/semantic-selector.ts
 new file mode 100644
-index 0000000..e2f2542
+index 0000000..ff4ff7c
 --- /dev/null
 +++ b/apps/extension/src/tools/semantic-selector.ts
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,100 @@
 +import { rpcError } from "./errors";
 +import type { CdpRunner } from "./shared";
 +
@@ -1956,19 +2203,30 @@ index 0000000..e2f2542
 +  return matches[0] ?? null;
 +}
 +
-+export async function resolveSemanticSelector(cdp: CdpRunner, tabId: number, rootNodeId: number, selector: string) {
++export async function resolveSemanticSelector(cdp: CdpRunner, tabId: number, _rootNodeId: number, selector: string) {
 +  let locator: Locator | null;
 +  try { locator = parseSemanticSelector(selector); }
 +  catch (error) { return invalid(String((error as Error).message)); }
 +  if (!locator) return null;
 +  const resolved = (backendNodeId: number) => ({ backendNodeId, cdpTarget: { tabId }, usedSelector: selector });
-+  const missing = () => rpcError("not_found", "selector_not_found", "Semantic locator did not match a visible element; observe the page before retrying");
++  const missing = () => rpcError("not_found", "selector_not_found", "No currently visible element matched this literal semantic locator; check its name in a fresh observation. This is not an unknown snapshot ref; no input was sent.");
 +  if (locator.kind === "role" || locator.kind === "label") {
-+    const reply = await cdp.send<{ nodes: Array<{ ignored?: boolean; backendDOMNodeId?: number; role?: { value: string }; name?: { value: string } }> }>(tabId, "Accessibility.queryAXTree", {
-+      nodeId: rootNodeId,
-+      ...(locator.role ? { role: locator.role } : {}),
-+      ...(locator.value ? { accessibleName: locator.value } : {}),
-+    });
++    // queryAXTree waits for a rendering lifecycle update that minimized pages
++    // may never produce. getFullAXTree forces the same browser-computed names
++    // and already uses the driver's bounded read/late-reply protection.
++    await cdp.send(tabId, "Accessibility.enable", {});
++    const attachmentId = cdp.getAttachmentId?.(tabId);
++    let reply;
++    try {
++      reply = await cdp.send<{ nodes: Array<{ ignored?: boolean; backendDOMNodeId?: number; role?: { value: string }; name?: { value: string } }> }>(tabId, "Accessibility.getFullAXTree", {});
++    } finally {
++      if (cdp.getAttachmentId?.(tabId) === attachmentId) {
++        await (cdp.sendGuarded && attachmentId !== undefined
++          ? cdp.sendGuarded({ tabId }, "Accessibility.disable", {}, { attachmentId })
++          : cdp.send(tabId, "Accessibility.disable", {})).catch(() => {});
++      }
++    }
++    if (reply.nodes.length > 20_000) return invalid("Semantic lookup is too broad; use an observed ref or CSS selector");
 +    const ids = [...new Set(reply.nodes.filter(node => !node.ignored && node.backendDOMNodeId
 +      && (!locator.role || node.role?.value.toLowerCase() === locator.role)
 +      && (!locator.value || node.name?.value.replace(/\s+/g, " ").trim() === locator.value)
@@ -2027,6 +2285,19 @@ index dc5fd0e..d26e5d2 100644
    // Step 2: clear the per-session RefStore (review M6/M7 parity).
    ctx.refStore.clear();
  
+diff --git a/apps/extension/src/tools/snapshot-ref.ts b/apps/extension/src/tools/snapshot-ref.ts
+index 1a82ecf..90fd1e4 100644
+--- a/apps/extension/src/tools/snapshot-ref.ts
++++ b/apps/extension/src/tools/snapshot-ref.ts
+@@ -70,7 +70,7 @@ export function resolveSnapshotRef(
+     return rpcError(
+       "not_found",
+       "ref_not_found",
+-      `ref ${ref} unknown for tab ${tabId} in session ${ctx.sessionId}`,
++      `ref ${ref} unknown for tab ${tabId} in session ${ctx.sessionId}; it was not observed or is stale, not proof that the element is absent. Observe with enough maxTokens and use a returned ref; no input was sent.`,
+     );
+   }
+   return looked;
 diff --git a/apps/extension/src/tools/tabs.ts b/apps/extension/src/tools/tabs.ts
 index 1dc82c6..9847314 100644
 --- a/apps/extension/src/tools/tabs.ts
@@ -2180,7 +2451,7 @@ index 89a886b..54245dc 100644
      "types": ["chrome"],
      "baseUrl": ".",
 diff --git a/apps/extension/wxt.config.ts b/apps/extension/wxt.config.ts
-index 73b6f4c..165787d 100644
+index 73b6f4c..8cf6f55 100644
 --- a/apps/extension/wxt.config.ts
 +++ b/apps/extension/wxt.config.ts
 @@ -33,7 +33,8 @@ export default defineConfig({
@@ -2189,7 +2460,7 @@ index 73b6f4c..165787d 100644
    manifest: {
 -    name: "BrowserSkill",
 +    name: "DeepSeek Harness",
-+    version_name: process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.5",
++    version_name: process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.6",
      description:
        "Let AI agents use your logged-in browser in a separate Agent Window—without interrupting your work. Powered by the bsk CLI.",
      // Flat debugger sessions are required to address out-of-process iframes.
@@ -2214,7 +2485,7 @@ index 73b6f4c..165787d 100644
        },
      ],
      define: {
-+      __DSH_INTEGRATION_VERSION__: JSON.stringify(process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.5"),
++      __DSH_INTEGRATION_VERSION__: JSON.stringify(process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.6"),
 +      __DSH_HARNESS_URL__: JSON.stringify(process.env.BSK_DSH_HTTP_BASE ?? "http://127.0.0.1:3080"),
        __BSK_EXT_BUILD__: JSON.stringify(EXTENSION_BUILD),
        __BSK_EXT_VERSION__: JSON.stringify(EXTENSION_VERSION),
@@ -2893,17 +3164,18 @@ index 7d8e8eb..b7c4ebe 100644
      ]);
 diff --git a/packages/dsh-plugin-browserskill/tests/dsh-batch.test.ts b/packages/dsh-plugin-browserskill/tests/dsh-batch.test.ts
 new file mode 100644
-index 0000000..941cebd
+index 0000000..ec574b9
 --- /dev/null
 +++ b/packages/dsh-plugin-browserskill/tests/dsh-batch.test.ts
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,57 @@
++import { DSH_BUILD_VERSION } from "../src/dsh-build-info";
 +import { afterEach, describe, expect, it, vi } from "vitest";
 +import { createStepRuntime, STEP_SUCCESS, STEP_PARTIAL, stepReply } from "./helpers/step-runtime";
 +
 +const cleanups: Array<() => Promise<void>> = [];
 +afterEach(async () => { for (const dispose of cleanups.splice(0)) await dispose(); });
 +const steps = [{ action: "fill", target: "label=Email", value: "private@example.test" }, { action: "click", target: 'role=button[name="Continue"]' }, { action: "press", target: "#code", key: "Enter" }];
-+async function host(run: Parameters<typeof createStepRuntime>[0]) { const runtime = await createStepRuntime(async (args, options) => args[0] === "debug" ? stepReply({ capabilities: { extension: { integration_version: "0.4.2-dsh.5" } } }, 0) : run(args, options)); cleanups.push(runtime.dispose); return runtime; }
++async function host(run: Parameters<typeof createStepRuntime>[0]) { const runtime = await createStepRuntime(async (args, options) => args[0] === "debug" ? stepReply({ capabilities: { extension: { integration_version: DSH_BUILD_VERSION } } }, 0) : run(args, options)); cleanups.push(runtime.dispose); return runtime; }
 +function receipt(result: { content: Array<{ type: string; text?: string }> }) { const block = result.content.at(-1); return block?.text ? JSON.parse(block.text) : undefined; }
 +
 +describe("bounded native batch", () => {
@@ -2955,10 +3227,11 @@ index 0000000..941cebd
 +});
 diff --git a/packages/dsh-plugin-browserskill/tests/dsh-diagnostics.test.ts b/packages/dsh-plugin-browserskill/tests/dsh-diagnostics.test.ts
 new file mode 100644
-index 0000000..0e56332
+index 0000000..08167e0
 --- /dev/null
 +++ b/packages/dsh-plugin-browserskill/tests/dsh-diagnostics.test.ts
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,30 @@
++import { DSH_BUILD_VERSION } from "../src/dsh-build-info";
 +import { describe, expect, it, vi } from "vitest";
 +import { createDshOperations, recordDshTiming } from "../src/dsh-operations";
 +import { KeyedExecutor } from "../src/queue";
@@ -2969,13 +3242,13 @@ index 0000000..0e56332
 +  it("reports compiled/CLI/extension versions and isolates bounded timings to the caller", async () => {
 +    const registry = new SessionRegistry(5);
 +    for (const id of ["s1", "s2"]) { registry.completeStart({ sessionId: id, startedAtMs: 0 }); registry.trackOwner(id, [id === "s1" ? "owner-a" : "owner-b"]); }
-+    const run = vi.fn(async (args: string[]) => ({ code: 0, stderr: "", aborted: false, timedOut: false, stdout: args[0] === "--version" ? "bsk 0.4.2" : JSON.stringify(args[0] === "browsers" ? [{ instance_id: "synthetic", extension_version: "0.4.2", extension_protocol_version: "1.8" }] : { capabilities: { extension: { integration_version: "0.4.2-dsh.5" } } }) }));
++    const run = vi.fn(async (args: string[]) => ({ code: 0, stderr: "", aborted: false, timedOut: false, stdout: args[0] === "--version" ? "bsk 0.4.2" : JSON.stringify(args[0] === "browsers" ? [{ instance_id: "synthetic", extension_version: "0.4.2", extension_protocol_version: "1.8" }] : { capabilities: { extension: { integration_version: DSH_BUILD_VERSION } } }) }));
 +    const deps = { registry, runner: { run }, queue: new KeyedExecutor() } as unknown as ToolDeps;
 +    recordDshTiming(deps, "s1", { operation: "fill", queueMs: 2, commandMs: 12, totalMs: 14, outcome: "ok" });
 +    recordDshTiming(deps, "s2", { operation: "click", queueMs: 0, commandMs: 10, totalMs: 10, outcome: "ok" });
 +    const doctor = createDshOperations(deps, {} as never)[1];
 +    const result = await doctor.execute({}, { signal: new AbortController().signal, agent: { id: "owner-a" } } as never) as Record<string, any>;
-+    expect(result.pluginVersion).toBe("0.4.2-dsh.5");
++    expect(result.pluginVersion).toBe(DSH_BUILD_VERSION);
 +    expect(result.checks.cli.compatible).toBe(true);expect(result.checks.extension.runtimeMatchesPlugin).toBe(true);
 +    expect(result.recentTimings).toHaveLength(1);expect(result.recentTimings[0]).toEqual({ session: "s1", operation: "fill", queueMs: 2, commandMs: 12, totalMs: 14, outcome: "ok" });
 +    expect(run.mock.calls.some(([args]) => args[0] === "start" || args[0] === "stop")).toBe(false);
