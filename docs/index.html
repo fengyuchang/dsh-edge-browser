@@ -25,7 +25,7 @@
         <h1>让 AI 操作浏览器，<br><em>每一步都看得见。</em></h1>
         <p class="intro">以 Codex 式浏览器协作为体验目标，让 DeepSeek 在你已登录的日常 Edge 中完成网页任务。看见指针和操作状态，框出需要调整的区域，把建议交回控制网页的原聊天。</p>
         <div class="cta"><a class="button primary" href="https://github.com/fengyuchang/dsh-edge-browser/releases/latest">下载完整安装包 <span aria-hidden="true">↓</span></a><a class="button secondary" href="https://github.com/fengyuchang/dsh-edge-browser">查看源码 ↗</a></div>
-        <p class="footnote">Windows x64 · BrowserSkill 0.4.2-dsh.7 · 后台零视口恢复 · 协议 1.8</p>
+        <p class="footnote">Windows x64 · BrowserSkill 0.4.2-dsh.8 · 后台截图渲染保活 · 协议 1.8</p>
       </div>
       <div class="browser-illustration" aria-label="浏览器操作示意，非实时连接">
         <div class="browser-top"><span class="dots">● ● ●</span><span class="tab">DeepSeek Harness</span></div>
@@ -49,7 +49,7 @@
       <figure class="real-shot compact-shot"><img src="assets/compact-controls.png" alt="新版简洁控制条：DeepSeek 正在控制、用户插入、局部标注、聊天详情、收起和中断" loading="lazy" width="513" height="84"><figcaption><b>03 / 简洁的底部居中控制条</b><span>0.4.2-dsh.4 · 独立浏览器合成页面实拍</span></figcaption></figure>
       <p class="image-note">静帧来自真实浏览器操作。动图在同一实际网页上重放同版插件组件，放慢以看清渐变和粒子。0.4.2-dsh.4 恢复紧凑控制条，修复普通截图引起的闪烁；人工接手保持等待，结束关闭临时页并保护未提交内容。<a href="https://github.com/fengyuchang/dsh-edge-browser/blob/main/docs/performance-0.4.2-dsh.4.md">查看本轮实测与改动</a>。</p>
       <p class="image-note">0.4.2-dsh.5 新增按角色、标签和准确文字找控件、最多 8 步的小批量操作、版本与调用耗时诊断。保留每步输入检查，遇到失败或人工接手即停止后续步骤。<a href="https://github.com/fengyuchang/dsh-edge-browser/blob/main/docs/automation-0.4.2-dsh.5.md">查看新增功能与 agent-browser 实测对照</a>。</p>
-      <p class="image-note">0.4.2-dsh.7 恢复后台任务页实际为 0×0 的渲染视口，让观察、截图和点击继续工作；调整窗口也可从零尺寸恢复。<a href="https://github.com/fengyuchang/dsh-edge-browser/blob/main/docs/recovery-0.4.2-dsh.7.md">查看真实零尺寸验收及适用范围</a>。</p>
+      <p class="image-note">0.4.2-dsh.8 为普通截图补上后台渲染保活，并细化超时说明，保留零视口恢复和旧合集清理。<a href="https://github.com/fengyuchang/dsh-edge-browser/blob/main/docs/capture-0.4.2-dsh.8.md">查看截图改进及验证边界</a>。</p>
       <a class="text-link" href="https://github.com/fengyuchang/dsh-edge-browser/blob/main/docs/browser-demo.md">复制演示任务，自己体验 ↗</a>
     </section>
     <section class="dark-section" id="start"><div class="wrap install-layout"><div><p class="eyebrow">GET STARTED</p><h2>连接你的日常 Edge。</h2><p>先安装并初始化 Edge 和 DeepSeek Harness Desktop，配置好模型。完整包提供扩展、接收端、运行依赖与安装回滚脚本。</p><a class="text-link" href="https://github.com/fengyuchang/dsh-edge-browser/blob/main/docs/installation.md">查看完整安装说明 ↗</a></div><ol class="steps"><li><b>下载并解压</b><span>从 Releases 获取 Windows x64 完整包。</span></li><li><b>运行安装器</b><span>正常退出 Harness，再运行“一键安装.cmd”。</span></li><li><b>加载 Edge 扩展</b><span>在 edge://extensions 开启开发人员模式，加载 extension 文件夹，连接 52800。</span></li><li><b>交给 AI 一个任务</b><span>重开 Harness，用 /browser-skill 和扩展中的实例 ID 开始。</span></li></ol></div></section>

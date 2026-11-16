@@ -1,0 +1,294 @@
+{
+  "version": "0.4.2-dsh.8",
+  "date": "2026-11-16",
+  "scope": "Fresh private browser profiles and daemon, synthetic owners and local fixtures; no messages to real chats or changes to daily-profile runtime",
+  "tests": {
+    "extension": {
+      "passed": 3733,
+      "skipped": 425
+    },
+    "native": {
+      "passed": 721,
+      "skipped": 10
+    },
+    "typechecks": "passed both sides"
+  },
+  "newUnitCoverage": [
+    "Cold-compositor condition requires a render stream before pixels can be read",
+    "Existing managed video stream is not stopped or reconfigured by screenshot cleanup",
+    "Control changes during rendering setup reject capture and release the owned lease",
+    "Cancelled capture returns promptly, releases rendering and ignores late images"
+  ],
+  "captureScenarios": [
+    {
+      "mode": "Headless Edge without startup size",
+      "status": "passed",
+      "startupWindowSizeArgument": null,
+      "variants": [
+        {
+          "variant": "natural",
+          "initialViewport": {
+            "width": 750,
+            "height": 437,
+            "visibility": "visible",
+            "focus": false
+          },
+          "initialWindowState": "minimized",
+          "capture": {
+            "ok": true,
+            "ms": 159,
+            "width": 750,
+            "height": 437,
+            "bytes": 123709
+          },
+          "streamStarts": 1,
+          "streamStops": 1
+        },
+        {
+          "variant": "zero-before-navigation",
+          "initialViewport": {
+            "width": 750,
+            "height": 437,
+            "visibility": "visible",
+            "focus": false
+          },
+          "initialWindowState": "minimized",
+          "capture": {
+            "ok": true,
+            "ms": 122,
+            "width": 750,
+            "height": 437,
+            "bytes": 123709
+          },
+          "streamStarts": 1,
+          "streamStops": 1
+        },
+        {
+          "variant": "zero-metrics",
+          "initialViewport": {
+            "width": 750,
+            "height": 437,
+            "visibility": "visible",
+            "focus": false
+          },
+          "initialWindowState": "minimized",
+          "actualZero": {
+            "width": 0,
+            "height": 0,
+            "visibility": "visible",
+            "focus": false
+          },
+          "recoveredViewport": {
+            "width": 1280,
+            "height": 800,
+            "visibility": "visible",
+            "focus": false
+          },
+          "capture": {
+            "ok": true,
+            "ms": 221,
+            "width": 1280,
+            "height": 800,
+            "bytes": 384281
+          },
+          "streamStarts": 1,
+          "streamStops": 1
+        },
+        {
+          "variant": "zero-frames",
+          "initialViewport": {
+            "width": 750,
+            "height": 437,
+            "visibility": "visible",
+            "focus": false
+          },
+          "initialWindowState": "minimized",
+          "actualZero": {
+            "width": 0,
+            "height": 0,
+            "visibility": "visible",
+            "focus": false
+          },
+          "recoveredViewport": {
+            "width": 1280,
+            "height": 800,
+            "visibility": "visible",
+            "focus": false
+          },
+          "capture": {
+            "ok": true,
+            "ms": 219,
+            "width": 1280,
+            "height": 800,
+            "bytes": 385338
+          },
+          "streamStarts": 1,
+          "streamStops": 1
+        }
+      ]
+    },
+    {
+      "mode": "Headed Edge on inactive Windows desktop, no startup size",
+      "status": "passed",
+      "startupWindowSizeArgument": null,
+      "variants": [
+        {
+          "variant": "natural",
+          "initialViewport": {
+            "width": 1028,
+            "height": 908,
+            "visibility": "hidden",
+            "focus": false
+          },
+          "initialWindowState": "minimized",
+          "capture": {
+            "ok": true,
+            "ms": 544,
+            "width": 1542,
+            "height": 1362,
+            "bytes": 717213
+          },
+          "streamStarts": 1,
+          "streamStops": 1
+        },
+        {
+          "variant": "zero-before-navigation",
+          "initialViewport": {
+            "width": 1028,
+            "height": 901,
+            "visibility": "hidden",
+            "focus": false
+          },
+          "initialWindowState": "minimized",
+          "capture": {
+            "ok": true,
+            "ms": 315,
+            "width": 1542,
+            "height": 1352,
+            "bytes": 689157
+          },
+          "streamStarts": 1,
+          "streamStops": 1
+        },
+        {
+          "variant": "zero-metrics",
+          "initialViewport": {
+            "width": 1028,
+            "height": 901,
+            "visibility": "hidden",
+            "focus": false
+          },
+          "initialWindowState": "minimized",
+          "actualZero": {
+            "width": 0,
+            "height": 0,
+            "visibility": "hidden",
+            "focus": false
+          },
+          "recoveredViewport": {
+            "width": 1280,
+            "height": 800,
+            "visibility": "hidden",
+            "focus": false
+          },
+          "capture": {
+            "ok": true,
+            "ms": 354,
+            "width": 1920,
+            "height": 1200,
+            "bytes": 704562
+          },
+          "streamStarts": 1,
+          "streamStops": 1
+        },
+        {
+          "variant": "zero-frames",
+          "initialViewport": {
+            "width": 1028,
+            "height": 901,
+            "visibility": "hidden",
+            "focus": false
+          },
+          "initialWindowState": "minimized",
+          "actualZero": {
+            "width": 0,
+            "height": 0,
+            "visibility": "hidden",
+            "focus": false
+          },
+          "recoveredViewport": {
+            "width": 1280,
+            "height": 800,
+            "visibility": "hidden",
+            "focus": false
+          },
+          "capture": {
+            "ok": true,
+            "ms": 342,
+            "width": 1920,
+            "height": 1200,
+            "bytes": 739718
+          },
+          "streamStarts": 1,
+          "streamStops": 1
+        }
+      ]
+    }
+  ],
+  "captureCases": 8,
+  "captureRangeMs": {
+    "min": 122,
+    "max": 544
+  },
+  "existingRegression": {
+    "cases": 42,
+    "viewportCases": 12,
+    "controlCases": 22,
+    "navigationCases": 8,
+    "clickScreenshotCycles": 8,
+    "flicker": {
+      "hiddenFrames": 0,
+      "frames": 368,
+      "hiddenAttributes": 0,
+      "removed": 0
+    }
+  },
+  "desktopMonitoring": {
+    "samples": 266,
+    "violations": 0
+  },
+  "baselineEvidence": {
+    "version": "0.4.2-dsh.7",
+    "mode": "Headed Edge on inactive Windows desktop, no startup size",
+    "originalFirstCaptureTimeoutReproduced": false,
+    "captures": [
+      {
+        "variant": "natural",
+        "ok": true,
+        "ms": 529
+      },
+      {
+        "variant": "zero-before-navigation",
+        "ok": true,
+        "ms": 326
+      },
+      {
+        "variant": "zero-metrics",
+        "ok": true,
+        "ms": 349
+      },
+      {
+        "variant": "zero-frames",
+        "ok": true,
+        "ms": 3234
+      }
+    ]
+  },
+  "limitations": [
+    "The original daily-profile first-screenshot timeout was not naturally reproduced; this is a rendering-liveness improvement based on an identified code-path gap, not proof that every capture timing failure is eliminated.",
+    "The zero-before-navigation variant requests zero before navigating; its post-navigation viewport was already positive. Actual zero was separately verified in the after-navigation variants.",
+    "The zero-frames variant explicitly primes animation frames, so first screenshot does not mean unpainted cold renderer in every scenario.",
+    "The headed browser ran on an inactive Windows desktop with --no-startup-window and no --window-size. It does not prove behavior under every daily-profile feature combination.",
+    "Existing pending Chrome read protection is unchanged. A screenshot or sync is not allowed to replay an uncertain action or bypass a pending renderer read."
+  ]
+}

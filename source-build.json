@@ -1,11 +1,11 @@
 {
   "upstream": "fbea9e8a191e05971015df13c79b23fc1ceaba14",
-  "version": "0.4.2-dsh.7",
+  "version": "0.4.2-dsh.8",
   "ws": "ws://127.0.0.1:52800",
   "harness": "http://127.0.0.1:3080",
-  "builtAt": "2026-11-16T12:34:43.068Z",
+  "builtAt": "2026-11-16T13:29:09.253Z",
   "inputs": {
-    "source/browser-skill.patch": "2a1ac5e02bebddea2e94c2b866975b723738920c023c53ef16030b1de7db8cd9",
+    "source/browser-skill.patch": "80fd7adc6d0be6e3a6719cd8de03822983a6b61006919e1c3188cfa838b37a6f",
     "source/content/dsh-controls.js": "2e4300ae5aaf23e69b9a998de2fb994e12e6b2a64c4b1b8f2b5ef9068564541b",
     "source/content/dsh-pointer.js": "7314b9ad9dcf19d90efde50de953c3805f8cade9fd19e487891b39e195322b6d",
     "source/extension/dsh-annotations.js": "41b0329384f8e3ef48dd863387822f3be63e35780240191488fb4018dfd92566",
@@ -24,7 +24,7 @@
     "harness/skill/references/cooperation.md": "3d46fdc14fce39da36a32a179c50692d9be06ee3a620d8eaa3c208026476b5ea",
     "harness/skill/references/debugging.md": "3b5305b98490f0e1176e2fa7e878df052094f656e7711c2b6dc17565d7891e92",
     "harness/skill/references/dsh-workflow.md": "4bc832f003aee5487a27abe3967ba3388a1cd2900d825c13105411a4beeefd82",
-    "harness/skill/references/help-and-recovery.md": "9592acfea8a40da9119bf536b40990940683329663fd747b6012827a38a2f4dc",
+    "harness/skill/references/help-and-recovery.md": "0efaf4d58b210f86ba04cf51b7d3b865230eac97ecc08eb0d9019b8736b1fd62",
     "harness/skill/references/interaction-details.md": "8ac80b90d06f0990c706c83b32c1f2783eb11521117c63068d61e0c32b9a828f",
     "harness/skill/references/native-dialogs.md": "f3a2f8b146e1be66c7d7496d5e051cf8a874dd4b45de2f82ff98d6c76388a441",
     "harness/skill/references/screenshots-and-canvas.md": "eca3557757db606f74c6fbb9d50d330f0552ad8a2aad4dd2df5a22f9ede3adb1",
@@ -34,12 +34,12 @@
     "scripts/build-source.mjs": "abac6c22e43459b70134f7894f37ef9409b1e87c1963200e7fb341ad824e2826"
   },
   "outputs": {
-    "extension/background.js": "d30de72196cdbf36658f3a63b137347fd5771d1ed84de5589060147da1f728b4",
+    "extension/background.js": "e6d1d9573157327914ed5db0225b7cbed2b546c1e7c93cba12e7aab2bd23c879",
     "extension/content-scripts/content.js": "688b3f273fcca488dd46a571c3242f76b4a5f6dcfd4dd09c992794d8f4f8ed55",
     "extension/content-scripts/dsh-pointer.js": "7314b9ad9dcf19d90efde50de953c3805f8cade9fd19e487891b39e195322b6d",
     "extension/content-scripts/dsh-controls.js": "2e4300ae5aaf23e69b9a998de2fb994e12e6b2a64c4b1b8f2b5ef9068564541b",
-    "packages/browser-skill-dsh-plugin/lib/index.mjs": "e6aa99fe1e5d3524afcae217162003076390929c4de63787acb3406aae9e4418",
-    "packages/browser-skill-dsh-plugin/lib/client.cjs": "1cc2cf801c5a48cd9e28a5567f0ef6dfc11d0af70aa9067470577aad28e5d307",
+    "packages/browser-skill-dsh-plugin/lib/index.mjs": "3e6c858f50028d5db4ee83b5e08cd7d379acbc1f8642af0f76b0283760b150b9",
+    "packages/browser-skill-dsh-plugin/lib/client.cjs": "46f594d8873c30d92d429ae11efb014820c7b8075f27d13d3b3ebfd0100a461a",
     "packages/browser-skill-dsh-plugin/skill/SKILL.md": "c11e259e1ab2e73827e4d599499c271cbdabead48b582559c50c7045d8223d8d"
   }
 }

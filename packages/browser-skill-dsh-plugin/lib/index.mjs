@@ -1437,7 +1437,7 @@ function disposeAll(disposers) {
 }
 //#endregion
 //#region src/dsh-build-info.ts
-const DSH_BUILD_VERSION = "0.4.2-dsh.7";
+const DSH_BUILD_VERSION = "0.4.2-dsh.8";
 //#endregion
 //#region src/message-source.ts
 /** Source syntax changed in DSH's durable format v4, not in the browser protocol. */
@@ -1508,7 +1508,7 @@ async function checkAdvancedCompatibility(deps, session, exec) {
 		signal: exec.signal,
 		timeoutMs: 1e4,
 		tag: session
-	}), exec.signal), "browser version check").capabilities?.extension?.integration_version !== "0.4.2-dsh.7") throw new Error("Browser extension and Harness plugin revisions do not match. Finish current tasks and reload the updated Edge extension; no input was sent.");
+	}), exec.signal), "browser version check").capabilities?.extension?.integration_version !== "0.4.2-dsh.8") throw new Error("Browser extension and Harness plugin revisions do not match. Finish current tasks and reload the updated Edge extension; no input was sent.");
 	const known = compatibleSessions.get(deps) ?? /* @__PURE__ */ new Set();
 	if (known.size >= 64) known.clear();
 	known.add(identity);

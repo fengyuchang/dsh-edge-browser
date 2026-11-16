@@ -2025,19 +2025,77 @@ index 13f43e9..f0c7302 100644
    });
  
 diff --git a/apps/extension/src/tools/__tests__/viewport-screenshot.test.ts b/apps/extension/src/tools/__tests__/viewport-screenshot.test.ts
-index f5cd822..2337684 100644
+index f5cd822..f90668d 100644
 --- a/apps/extension/src/tools/__tests__/viewport-screenshot.test.ts
 +++ b/apps/extension/src/tools/__tests__/viewport-screenshot.test.ts
-@@ -32,7 +32,7 @@ function fixture() {
+@@ -1,4 +1,5 @@
+ import { describe, expect, it, vi } from "vitest";
++import { screencasts } from "@/browser-driver/screencast-coordinator";
+ import type { CaptureSuppressMessage } from "@/lib/capture-suppress-bridge";
+ import type { CdpRunner } from "../shared";
+ import { captureControlledViewport } from "../viewport-screenshot";
+@@ -32,7 +33,59 @@ function fixture() {
  }
  
  describe("controlled viewport capture", () => {
 -  it("captures a valid viewport and restores the overlay without owning execution policy", async () => {
++  it("keeps a cold compositor producing frames without activating the tab", async () => {
++    const f = fixture();
++    f.cdp.onEvent = () => ({ dispose() {} });
++    let rendering = false;
++    f.hook.command = async method => {
++      if (method === "Page.startScreencast") rendering = true;
++      if (method === "Page.stopScreencast") rendering = false;
++      if (method === "Page.captureScreenshot" && !rendering) throw new Error("No compositor frame");
++    };
++    await expect(f.cdp.send(7, "Page.captureScreenshot")).rejects.toThrow("No compositor frame");
++    expect(await f.run()).toMatchObject({ image_base64: PNG });
++    expect(rendering).toBe(false);
++    expect(f.send.mock.calls.filter(([,method]) => method === "Page.stopScreencast")).toHaveLength(1);
++    expect(f.send.mock.calls.some(([,method]) => ["Page.bringToFront", "Emulation.setFocusEmulationEnabled"].includes(method))).toBe(false);
++    expect(f.bridge).not.toHaveBeenCalled();
++  });
++
++  it("preserves an existing recording stream when the screenshot releases its rendering lease", async () => {
++    const f = fixture();
++    f.cdp.onEvent = () => ({ dispose() {} });
++    const video = await screencasts(f.cdp).acquire(7, { format: "jpeg", maxWidth: 1280, maxHeight: 800 });
++    expect(await f.run()).toMatchObject({ image_base64: PNG });
++    expect(f.send.mock.calls.filter(([,method]) => method === "Page.startScreencast")).toHaveLength(1);
++    expect(f.send.mock.calls.some(([,method]) => method === "Page.stopScreencast")).toBe(false);
++    await video.release();
++    expect(f.send.mock.calls.filter(([,method]) => method === "Page.stopScreencast")).toHaveLength(1);
++  });
++
++  it("rechecks ownership after renderer setup and releases only its lease", async () => {
++    const f = fixture();
++    f.cdp.onEvent = () => ({ dispose() {} });
++    f.hook.command = async method => { if (method === "Page.startScreencast") f.state.controlled = false; };
++    expect(await f.run()).toMatchObject({ code: "not_found" });
++    expect(f.send.mock.calls.some(([,method]) => method === "Page.captureScreenshot")).toBe(false);
++    expect(f.send.mock.calls.filter(([,method]) => method === "Page.stopScreencast")).toHaveLength(1);
++  });
++
++  it("releases its rendering lease promptly on cancellation and never continues a late image", async () => {
++    const f = fixture();
++    f.cdp.onEvent = () => ({ dispose() {} });
++    let finish!: () => void;
++    f.hook.command = async method => { if (method === "Page.captureScreenshot") await new Promise<void>(r => { finish = r; }); };
++    const controller = new AbortController(), result = f.run(controller.signal);
++    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
++    controller.abort();
++    expect(await result).toMatchObject({ code: "cancelled" });
++    expect(f.send.mock.calls.filter(([,method]) => method === "Page.stopScreencast")).toHaveLength(1);
++    const count = f.send.mock.calls.length;
++    finish();await Promise.resolve();
++    expect(f.send.mock.calls).toHaveLength(count);
++  });
++
 +  it("captures a valid viewport without hiding UI or changing execution policy", async () => {
      const f = fixture();
      expect(await f.run()).toEqual({ image_base64: PNG, width: 1, height: 1 });
      expect(f.send).toHaveBeenCalledWith(7, "Page.captureScreenshot", {
-@@ -40,7 +40,7 @@ describe("controlled viewport capture", () => {
+@@ -40,7 +93,7 @@ describe("controlled viewport capture", () => {
        fromSurface: true,
        captureBeyondViewport: false,
      });
@@ -2046,7 +2104,7 @@ index f5cd822..2337684 100644
      const methods = f.send.mock.calls.map((call) => call[1]);
      expect(methods).not.toContain("Emulation.setFocusEmulationEnabled");
      expect(methods).not.toContain("Page.bringToFront");
-@@ -62,24 +62,21 @@ describe("controlled viewport capture", () => {
+@@ -62,24 +115,21 @@ describe("controlled viewport capture", () => {
        code: "not_found",
        data: { reason: "visual_target_changed" },
      });
@@ -2078,7 +2136,7 @@ index f5cd822..2337684 100644
      expect(await f.run()).toMatchObject({ code: "not_found" });
    });
  
-@@ -90,7 +87,7 @@ describe("controlled viewport capture", () => {
+@@ -90,7 +140,7 @@ describe("controlled viewport capture", () => {
        if (method === "Page.captureScreenshot") abort.abort();
      };
      expect(await f.run(abort.signal)).toMatchObject({ code: "cancelled" });
@@ -2087,7 +2145,7 @@ index f5cd822..2337684 100644
    });
  
    it.each([
-@@ -120,7 +117,7 @@ describe("controlled viewport capture", () => {
+@@ -120,7 +170,7 @@ describe("controlled viewport capture", () => {
        await Promise.resolve();
        expect(f.send.mock.calls).toHaveLength(commands);
        if (method === "Page.captureScreenshot")
@@ -2096,7 +2154,7 @@ index f5cd822..2337684 100644
        f.hook.command = async () => {};
        expect(await f.run()).toMatchObject({ image_base64: PNG });
      } finally {
-@@ -153,23 +150,15 @@ describe("controlled viewport capture", () => {
+@@ -153,23 +203,15 @@ describe("controlled viewport capture", () => {
        const assertion = expect(result).resolves.toMatchObject({ code: "timeout" });
        await vi.advanceTimersByTimeAsync(11_000);
        await assertion;
@@ -2125,7 +2183,7 @@ index f5cd822..2337684 100644
    });
    it("reports capture failure without retrying another target or backend", async () => {
      const f = fixture();
-@@ -184,7 +173,7 @@ describe("controlled viewport capture", () => {
+@@ -184,7 +226,7 @@ describe("controlled viewport capture", () => {
      expect(f.send.mock.calls.filter((call) => call[1] === "Page.captureScreenshot")).toHaveLength(
        1,
      );
@@ -2712,19 +2770,20 @@ index 1dc82c6..9847314 100644
      return {
        code: "not_found",
 diff --git a/apps/extension/src/tools/viewport-screenshot.ts b/apps/extension/src/tools/viewport-screenshot.ts
-index 9234bad..61a4600 100644
+index 9234bad..9dcd18a 100644
 --- a/apps/extension/src/tools/viewport-screenshot.ts
 +++ b/apps/extension/src/tools/viewport-screenshot.ts
-@@ -1,7 +1,4 @@
+@@ -1,7 +1,5 @@
 -import {
 -  type CaptureSuppressSendToTab,
 -  withExtensionOverlayHidden,
 -} from "@/lib/capture-suppress-bridge";
++import { type ScreencastLease, screencasts } from "@/browser-driver/screencast-coordinator";
 +import type { CaptureSuppressSendToTab } from "@/lib/capture-suppress-bridge";
  import type { RpcError } from "@/transport/types";
  import { rpcError } from "./errors";
  import { parsePngDimensions } from "./png";
-@@ -87,7 +84,7 @@ export async function captureControlledViewport(
+@@ -87,19 +85,21 @@ export async function captureControlledViewport(
    tabId: number,
    stillControlled: () => Promise<boolean>,
    signal?: AbortSignal,
@@ -2732,8 +2791,24 @@ index 9234bad..61a4600 100644
 +  _sendToTab?: CaptureSuppressSendToTab,
  ): Promise<{ image_base64: string; width: number; height: number } | RpcError> {
    const deadline = Date.now() + 10_000;
++  let phase = "checking the screenshot target";
++  let renderingLease: ScreencastLease | undefined;
    const wait = <T>(work: Promise<T>, cleanup = false) =>
-@@ -115,20 +112,6 @@ export async function captureControlledViewport(
+     waitBounded(
+       work,
+       cleanup ? Date.now() + 500 : deadline,
+       cleanup ? undefined : signal,
+-      "Viewport capture timed out",
++      `Viewport capture timed out while ${phase}`,
+     );
+   const check = () => {
+     throwIfAborted(signal);
+-    if (Date.now() >= deadline) throw new BoundedWaitError("timeout", "Viewport capture timed out");
++    if (Date.now() >= deadline) throw new BoundedWaitError("timeout", `Viewport capture timed out while ${phase}`);
+   };
+   // Chrome cannot cancel dispatched reads. Retire their waiters and consume late
+   // replies; never continue the pipeline after its cancellation or deadline.
+@@ -115,23 +115,10 @@ export async function captureControlledViewport(
      check();
      return wait(stillControlled());
    };
@@ -2754,7 +2829,11 @@ index 9234bad..61a4600 100644
    try {
      check();
      if (!(await controlled())) return changed();
-@@ -143,20 +126,16 @@ export async function captureControlledViewport(
++    phase = "reading the screenshot document identity";
+     const identity = await readDocumentIdentity(captureCdp, tabId, signal);
+     if (!identity) return changed();
+     const bound = boundToAttachment(captureCdp, tabId, identity.attachmentId);
+@@ -143,20 +130,32 @@ export async function captureControlledViewport(
        check();
        return verified === "current" && cdp.getAttachmentId?.(tabId) === identity.attachmentId;
      };
@@ -2763,9 +2842,24 @@ index 9234bad..61a4600 100644
 -      async () => {
 -        if (!(await current())) return null;
 -        return bound.send<{ data?: string }>(tabId, "Page.captureScreenshot", {
++    if (!(await current())) return changed();
++    if (cdp.onEvent) {
++      phase = "preparing background rendering";
++      const pending = screencasts(cdp).acquire(tabId, { format: "png", maxWidth: 32, maxHeight: 32 }, signal);
++      try {
++        renderingLease = await wait(pending);
++      } catch (error) {
++        // A late acquisition still owns its lease and must release just that claim.
++        void pending.then(lease => lease.release()).catch(() => {});
++        throw error;
++      }
++      if (!(await current())) return changed();
++    }
++    // Reuse the full-page capturer's tiny rendering lease. Its pixels are unused;
++    // it keeps a minimized compositor producing frames without selecting the tab.
 +    // Routine inspection must not blank the user's glow/control bar. Keep the
 +    // same ownership, attachment, document and timeout fences around capture.
-+    if (!(await current())) return changed();
++    phase = "capturing viewport pixels";
 +    const shot = await bound.send<{ data?: string }>(tabId, "Page.captureScreenshot", {
            format: "png",
            fromSurface: true,
@@ -2776,10 +2870,19 @@ index 9234bad..61a4600 100644
 -    );
      throwIfAborted(signal);
 -    // Validate after overlay restoration as well: navigation/return can race it.
++    phase = "verifying the captured document";
 +    // Navigation or return can race a screenshot; recheck before publishing it.
      if (!shot || !(await current()) || !(await controlled())) return changed();
      throwIfAborted(signal);
      if (cdp.getAttachmentId?.(tabId) !== identity.attachmentId) return changed();
+@@ -178,5 +177,7 @@ export async function captureControlledViewport(
+       "screenshot_capture_failed",
+       error instanceof Error ? error.message : String(error),
+     );
++  } finally {
++    if (renderingLease) await wait(renderingLease.release(), true).catch(() => {});
+   }
+ }
 diff --git a/apps/extension/src/tools/vom/semantic-graph/project.ts b/apps/extension/src/tools/vom/semantic-graph/project.ts
 index 01e61e3..4b1ed9e 100644
 --- a/apps/extension/src/tools/vom/semantic-graph/project.ts
@@ -2957,7 +3060,7 @@ index 89a886b..54245dc 100644
      "types": ["chrome"],
      "baseUrl": ".",
 diff --git a/apps/extension/wxt.config.ts b/apps/extension/wxt.config.ts
-index 73b6f4c..e7d0413 100644
+index 73b6f4c..86c47d4 100644
 --- a/apps/extension/wxt.config.ts
 +++ b/apps/extension/wxt.config.ts
 @@ -33,7 +33,8 @@ export default defineConfig({
@@ -2966,7 +3069,7 @@ index 73b6f4c..e7d0413 100644
    manifest: {
 -    name: "BrowserSkill",
 +    name: "DeepSeek Harness",
-+    version_name: process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.7",
++    version_name: process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.8",
      description:
        "Let AI agents use your logged-in browser in a separate Agent Window—without interrupting your work. Powered by the bsk CLI.",
      // Flat debugger sessions are required to address out-of-process iframes.
@@ -2991,7 +3094,7 @@ index 73b6f4c..e7d0413 100644
        },
      ],
      define: {
-+      __DSH_INTEGRATION_VERSION__: JSON.stringify(process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.7"),
++      __DSH_INTEGRATION_VERSION__: JSON.stringify(process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.8"),
 +      __DSH_HARNESS_URL__: JSON.stringify(process.env.BSK_DSH_HTTP_BASE ?? "http://127.0.0.1:3080"),
        __BSK_EXT_BUILD__: JSON.stringify(EXTENSION_BUILD),
        __BSK_EXT_VERSION__: JSON.stringify(EXTENSION_VERSION),
