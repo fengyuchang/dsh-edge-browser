@@ -62,3 +62,11 @@ Agent Window cannot host the prompt. If it still fails, stop and report the erro
 
 Remote reads/actions require task-created or borrowed tabs; popups gain no control.
 An unowned tab inside the Agent Window needs a user move to a user window before borrowing.
+# Empty task tabs
+
+An omitted create URL leaves an `about:blank` task tab. Navigate it with
+`bsk_page(action=navigate)` before page work. Sync may return `ready:false`,
+`reason:blank_page` and no context; this does not authorize input or mean the
+session ended. Select, return and finish remain available even if a document
+cannot install its interaction collector. Never navigate a borrowed user blank
+to a different page just to make it observable; return it when no longer needed.

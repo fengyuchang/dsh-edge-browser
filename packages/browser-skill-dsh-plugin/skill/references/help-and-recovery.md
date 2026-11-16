@@ -51,6 +51,10 @@ backends to bypass limits. Borrow confirmation still applies.
 - Other errors: follow the hint; on unrecoverable failure, report and stop the owned session.
 ## 后台读取与加载诊断
 
+- `ready:false / reason:blank_page`：空标签没有可读内容，也没有获得输入上下文。新任务页先用 `bsk_page(action=navigate)` 打开目标 URL；也可切换、归还或结束任务。不要反复刷新空白页，不要为消除错误改写借用的用户页面。
+- `The strict observation changed before this action`：运行 `bsk_session(action=sync)`，核对新状态，再决定是否执行 evaluate 等动作。没有自动重放脚本。
+- 明确提示“不属于当前聊天”时保留会话隔离；提示“当前聊天没有可用的这个浏览器任务”时先 `bsk_session(action=list)` 核对，它可能已结束、被关闭或在重启后失去关联。不要据此接管其他聊天的任务。
+
 - 更新后用 `bsk_session(action=diagnose)` 核对运行版本；旧 action 枚举不含 diagnose/batch 时，宿主插件或聊天工具 schema 尚未更新。只重载 Edge 不能替代 Harness 的 BrowserSkill 重载。
 - 未知 ref 表示未观察到、已失效或不属此标签，不代表元素不存在；增加观察预算并使用实际返回引用。语义 locator 未匹配时检查准确名称，不拼接猜测。
 - `@view 0x0` 或 `viewport unavailable` 可能是捕获失败，不代表空页面；等候后同步，不自动激活窗口。仍不可测量时报告错误并保留需要人工处理的页面，避免循环重试。

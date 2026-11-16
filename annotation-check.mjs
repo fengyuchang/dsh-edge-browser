@@ -192,7 +192,8 @@ try {
   const exec = { agent: { id: 'chat-a' } }, echo = async args => args;
   assert.equal((await executeScopedBrowserAction(scope, 'bsk_page', { action: 'navigate' }, exec, echo)).session, 'browser-a');
   await assert.rejects(executeScopedBrowserAction(scope, 'bsk_page', { action: 'navigate', session: 'browser-b' }, exec, echo), /不属于当前聊天/);
-  await assert.rejects(executeScopedBrowserAction(scope, 'bsk_interact', { action: 'click' }, { agent: { id: 'chat-without-browser' } }, echo), /不属于当前聊天/);
+  await assert.rejects(executeScopedBrowserAction(scope, 'bsk_interact', { action: 'click' }, { agent: { id: 'chat-without-browser' } }, echo), /没有可用.*action=list/);
+  await assert.rejects(executeScopedBrowserAction(scope, 'bsk_interact', { action: 'click', session: 'closed-browser' }, exec, echo), /已结束.*action=list/);
   const listed = await executeScopedBrowserAction(scope, 'bsk_session', { action: 'list' }, exec, async () => ({ sessions: [{ sessionId: 'browser-a', current: false, state:'active' }, { sessionId: 'browser-b', current: true }], pendingCleanup: 4 }));
   assert.deepEqual(listed.sessions, [{ sessionId: 'browser-a', current: true, state:'active' }]);
   // Stop retry ownership is exercised by the native lifecycle suite (implicit retry must remain implicit).

@@ -1,0 +1,109 @@
+{
+  "version": "0.4.2-dsh.9",
+  "date": "2026-11-17",
+  "status": "passed",
+  "scope": "Isolated browser profiles/daemon, disposable fixtures, synthetic owners. Current daily-profile activation is a separate deployment check.",
+  "tests": {
+    "extensionPassed": 3740,
+    "nativePassed": 724,
+    "skipped": 435,
+    "typechecks": "both passed"
+  },
+  "baseline": {
+    "version": "0.4.2-dsh.8",
+    "newBlankSyncRejected": true,
+    "selectOriginalTabSucceeded": true,
+    "borrowedBlankReturnRejected": true,
+    "stopRestoredBorrowedBlank": true
+  },
+  "live": {
+    "checks": 46,
+    "headless": {
+      "checks": [
+        "Native and extension runtime versions aligned",
+        "Task window stays minimized",
+        "First screenshot returned valid PNG without retry",
+        "Blank sync reports no content without granting an input context; another task tab remains selectable",
+        "Unobserved blank does not authorize page scripts",
+        "Owned disposable blank can be released unchanged",
+        "Borrowed blank returns unchanged to original window and index without fallback",
+        "Another owner window stays hidden and cannot be borrowed",
+        "Known foreign and unavailable tasks give distinct guidance and remain inaccessible",
+        "Create with real URL yields a normal observed context",
+        "Temporary task windows close on finish",
+        "Borrowed fixture survives cleanup and no private task remains"
+      ],
+      "screenshot": {
+        "attempts": 1,
+        "ms": 118,
+        "width": 750,
+        "height": 437
+      }
+    },
+    "nativeWindowsEdge": {
+      "startup": "Inactive Windows desktop; --no-startup-window; no --window-size",
+      "checks": [
+        "Native and extension runtime versions aligned",
+        "Task window stays minimized",
+        "First screenshot returned valid PNG without retry",
+        "Blank sync reports no content without granting an input context; another task tab remains selectable",
+        "Unobserved blank does not authorize page scripts",
+        "Owned disposable blank can be released unchanged",
+        "Borrowed blank returns unchanged to original window and index without fallback",
+        "Another owner window stays hidden and cannot be borrowed",
+        "Known foreign and unavailable tasks give distinct guidance and remain inaccessible",
+        "Create with real URL yields a normal observed context",
+        "Temporary task windows close on finish",
+        "Borrowed fixture survives cleanup and no private task remains"
+      ],
+      "screenshot": {
+        "attempts": 1,
+        "ms": 371,
+        "width": 1542,
+        "height": 1362
+      }
+    },
+    "control": {
+      "checks": [
+        "Native fill passes the input lock",
+        "Control panel is centered",
+        "AI ownership blocks physical clicks, text insertion and wheel",
+        "Focused iframe input remains locked",
+        "Explicit user insertion pauses AI and permits human click/edit",
+        "Hand-back restores AI input lock",
+        "Native fill, press and step work after hand-back",
+        "Literal semantic locators work, hidden duplicates are ignored, ambiguous targets refuse without input",
+        "Icon-only controls receive bounded DOM hints",
+        "Batch advances real contexts and returns one final observation",
+        "Partial batch preserves prior input and never runs later steps",
+        "In-flight batch cancellation stops remaining inputs",
+        "Compiled/file/CLI/active extension versions and private owned timings agree",
+        "Native wheel and scroll-to pass the lock",
+        "8 click + screenshot cycles keep glow/panel mounted and continuously visible",
+        "Hidden/collapsed hints preserve the input lock",
+        "Native help completion restores page locking",
+        "Native help unlocks page and newly loaded iframe, then hands back",
+        "Finished retained page releases lock and accepts input",
+        "Parallel owners stay isolated; only an idle plugin window is reused",
+        "Idle completion closes temporary tabs/window and preserves unsubmitted forms",
+        "Timed-out manual help retains its pending page without live browser control"
+      ],
+      "flicker": {
+        "hiddenFrames": 0,
+        "frames": 407,
+        "hiddenAttributes": 0,
+        "removed": 0
+      }
+    },
+    "desktopSamples": 172,
+    "observedHelperWindowOrForegroundViolations": 0
+  },
+  "ownershipRegression": {
+    "missingSessionConfirmedByDaemon": true,
+    "liveSessionPreservedOnTargetFailure": true,
+    "malformedListPreservesOwnership": true,
+    "scope": "Native unit tests; real active user session was not made to fail"
+  },
+  "screenshotLimit": "No .8 timeout naturally reproduced in this run; old timeout receipts predate .8 activation. No overlapping capture retry was added.",
+  "performanceLimit": "Single captures in local fixtures are observations, not a throughput benchmark."
+}

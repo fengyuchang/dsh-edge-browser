@@ -4,7 +4,7 @@ Visible, background control of your everyday Edge browser for DeepSeek Harness.
 
 [中文](README.md) · [Downloads](https://github.com/fengyuchang/dsh-edge-browser/releases/latest) · [Project site](https://fengyuchang.github.io/dsh-edge-browser/)
 
-**Latest: 0.4.2-dsh.8, 2026-11-16.** Keeps the compositor producing frames during controlled viewport screenshots, reusing the existing tiny shared rendering stream without activating the task window. Releases only its own lease and preserves recording consumers. Timeout messages identify the capture stage. See the [capture changes and validation limits](docs/capture-0.4.2-dsh.8.md) and [features and agent-browser comparison](docs/automation-0.4.2-dsh.5.md).
+**Latest: 0.4.2-dsh.9, 2026-11-17.** Borrowed blank tabs can be returned unchanged even when their page collector is unavailable. Blank sync reports no readable content without granting an input context. Screenshot target failures require confirmation of actual session absence before chat ownership is removed. Stale-observation and unavailable-session messages include recovery steps. See [changes and validation](docs/blank-tabs-0.4.2-dsh.9.md) and the [background capture improvements](docs/capture-0.4.2-dsh.8.md).
 
 Built on Tencent BrowserSkill 0.4.2. This community customization reuses the
 browser's signed-in sessions, controls task tabs without moving the system mouse,

@@ -5,7 +5,11 @@ export async function executeScopedBrowserAction(deps, toolName, args, exec, run
   const owned = deps.registry.ownedByDsh(owner);
   const records = [...(deps.starts?.journal?.records?.values() ?? [])].filter(record => record.owners.includes(owner));
   const sessionTool = toolName === 'bsk_session';
-  const refuse = () => { throw new Error('此浏览器任务不属于当前聊天。请在本会话新建浏览器任务；不会使用其他会话的窗口。'); };
+  const refuse = () => {
+    if (args.session !== undefined && deps.registry.list().some(entry => entry.sessionId === args.session))
+      throw new Error('此浏览器任务不属于当前聊天。请在本会话新建浏览器任务；不会使用其他会话的窗口。');
+    throw new Error('当前聊天没有可用的这个浏览器任务：它可能已结束、被关闭或在重启后失去关联。先用 bsk_session(action=list) 核对，再在当前聊天新建任务；不会接管其他聊天的窗口。');
+  };
   if (sessionTool && args.action === 'diagnose' && args.session === undefined) return run(args);
   if (sessionTool && args.action === 'start') return run({ ...args, agentName: args.agentName ?? 'DeepSeek Harness', project: args.project ?? ('聊天 ' + owner.slice(-8)) });
   if (sessionTool && args.action === 'list') {

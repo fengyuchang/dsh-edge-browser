@@ -1388,7 +1388,8 @@ async function executeScopedBrowserAction(deps, toolName, args, exec, run) {
 	const records = [...deps.starts?.journal?.records?.values() ?? []].filter((record) => record.owners.includes(owner));
 	const sessionTool = toolName === "bsk_session";
 	const refuse = () => {
-		throw new Error("此浏览器任务不属于当前聊天。请在本会话新建浏览器任务；不会使用其他会话的窗口。");
+		if (args.session !== void 0 && deps.registry.list().some((entry) => entry.sessionId === args.session)) throw new Error("此浏览器任务不属于当前聊天。请在本会话新建浏览器任务；不会使用其他会话的窗口。");
+		throw new Error("当前聊天没有可用的这个浏览器任务：它可能已结束、被关闭或在重启后失去关联。先用 bsk_session(action=list) 核对，再在当前聊天新建任务；不会接管其他聊天的窗口。");
 	};
 	if (sessionTool && args.action === "diagnose" && args.session === void 0) return run(args);
 	if (sessionTool && args.action === "start") return run({
@@ -1437,7 +1438,7 @@ function disposeAll(disposers) {
 }
 //#endregion
 //#region src/dsh-build-info.ts
-const DSH_BUILD_VERSION = "0.4.2-dsh.8";
+const DSH_BUILD_VERSION = "0.4.2-dsh.9";
 //#endregion
 //#region src/message-source.ts
 /** Source syntax changed in DSH's durable format v4, not in the browser protocol. */
@@ -1508,7 +1509,7 @@ async function checkAdvancedCompatibility(deps, session, exec) {
 		signal: exec.signal,
 		timeoutMs: 1e4,
 		tag: session
-	}), exec.signal), "browser version check").capabilities?.extension?.integration_version !== "0.4.2-dsh.8") throw new Error("Browser extension and Harness plugin revisions do not match. Finish current tasks and reload the updated Edge extension; no input was sent.");
+	}), exec.signal), "browser version check").capabilities?.extension?.integration_version !== "0.4.2-dsh.9") throw new Error("Browser extension and Harness plugin revisions do not match. Finish current tasks and reload the updated Edge extension; no input was sent.");
 	const known = compatibleSessions.get(deps) ?? /* @__PURE__ */ new Set();
 	if (known.size >= 64) known.clear();
 	known.add(identity);
@@ -2658,6 +2659,8 @@ var ObservationService = class {
 	async capture(sessionId) {
 		if (!this.canCapture(sessionId)) return;
 		if (this.captureInFlight.has(sessionId)) return;
+		const observedEntry = this.observations.get(sessionId);
+		const ownedRequest = this.deps.registry.requestFor(sessionId);
 		this.captureInFlight.add(sessionId);
 		const sessionKey = createHash("sha256").update(sessionId).digest("hex").slice(0, 16);
 		const outPath = join(tmpdir(), `bsk-obs-${this.scratchNamespace}-${sessionKey}.png`);
@@ -2694,9 +2697,18 @@ var ObservationService = class {
 					code = void 0;
 				}
 				if (isSessionNotFoundCode(code)) {
-					this.deps.registry.remove(sessionId);
-					this.removeSession(sessionId);
-					return;
+					const listed = await this.deps.runner.run(["session", "list"], {
+						timeoutMs: 5e3,
+						tag: `observation:${sessionId}`
+					});
+					if (listed.code === 0 && !listed.timedOut && !listed.aborted) {
+						const sessions = JSON.parse(listed.stdout);
+						if (Array.isArray(sessions) && sessions.every((row) => row && typeof row.session_id === "string") && !sessions.some((row) => row.session_id === sessionId) && this.observations.get(sessionId) === observedEntry && this.deps.registry.requestFor(sessionId) === ownedRequest) {
+							this.deps.registry.remove(sessionId);
+							this.removeSession(sessionId);
+							return;
+						}
+					}
 				}
 				throw new Error(`screenshot exited ${result.code}`);
 			}
@@ -4331,7 +4343,7 @@ function registerPhaseOneTabTools(deps, register, runtime) {
 			session: SESSION_PARAM,
 			url: {
 				type: "string",
-				description: "Initial URL (default: chrome://newtab/)."
+				description: "Initial URL (default: about:blank; navigate it before page input)."
 			},
 			active: {
 				type: "boolean",
