@@ -13,19 +13,29 @@ assert(!manifest.permissions.includes('cookies'));assert(manifest.permissions.in
 assert.equal(manifest.commands['dsh-annotate'].suggested_key.default,'Alt+Shift+A');
 for(const f of fs.readdirSync(path.join(root,'source/extension')).filter(f=>f.endsWith('.js')))new vm.Script(classic(read('source/extension/'+f)));
 for(const f of ['content-scripts/dsh-controls.js','content-scripts/dsh-pointer.js','background.js'])new vm.Script(read('extension/'+f));
-const calls=[], events={}, tabs=new Map();
+const calls=[], events={}, tabs=new Map(), legacyGroups=new Map(), ungrouped=[];
 const event=name=>({addListener:fn=>events[name]=fn});
-const group=vm.createContext({console,chrome:{runtime:{id:'ours'},tabs:{
+const group=vm.createContext({console,chrome:{runtime:{id:'ours',onStartup:event('startup')},tabs:{
  group:async args=>{if(args.groupId===undefined)assert.equal(args.createProperties.windowId,4);calls.push(args);return 9;},
  update:async(id,change)=>{const tab=tabs.get(id);tab.mutedInfo={muted:change.muted,reason:'extension',extensionId:'ours'};return tab;},
- get:async id=>tabs.get(id),onCreated:event('created'),onAttached:event('attached'),onUpdated:event('updated'),onRemoved:event('removed')
-},windows:{onRemoved:event('windowRemoved')},tabGroups:{update:async()=>{},onRemoved:event('groupRemoved')}}});
+ get:async id=>tabs.get(id),query:async({windowId,groupId})=>[...tabs.values()].filter(t=>t.windowId===windowId&&(groupId===undefined||t.groupId===groupId)),
+ ungroup:async ids=>{ungrouped.push([...ids]);for(const id of ids)tabs.get(id).groupId=-1},
+ onCreated:event('created'),onAttached:event('attached'),onUpdated:event('updated'),onRemoved:event('removed')
+},windows:{onRemoved:event('windowRemoved')},tabGroups:{query:async()=>[...legacyGroups.values()],get:async id=>legacyGroups.get(id),update:async()=>{},onRemoved:event('groupRemoved')}}});
 vm.runInContext(classic(read('source/extension/dsh-task-groups.js'))+'\ndshInstallTaskGroups();',group);
 tabs.set(7,{id:7,windowId:4});group.win={id:4,tabs:[tabs.get(7)]};await vm.runInContext('dshGroupAgentWindow(win)',group);
-assert(tabs.get(7).mutedInfo.muted);assert.equal(calls.length,1);
+assert(tabs.get(7).mutedInfo.muted);assert.equal(calls.length,0,'Task creation must not leave persistent browser groups');
 tabs.get(7).windowId=88;await events.attached(7);assert.equal(tabs.get(7).mutedInfo.muted,false);
 tabs.set(8,{id:8,windowId:88,mutedInfo:{muted:false}});await events.created(tabs.get(8));assert.equal(tabs.get(8).mutedInfo.muted,false);
 tabs.set(9,{id:9,windowId:4});await events.attached(9);tabs.get(9).windowId=88;tabs.get(9).mutedInfo={muted:true,reason:'extension',extensionId:'other'};await events.attached(9);assert(tabs.get(9).mutedInfo.muted);
+legacyGroups.set(10,{id:10,windowId:4,title:'DeepSeek Harness',color:'blue'});
+legacyGroups.set(11,{id:11,windowId:4,title:'My group',color:'blue'});
+legacyGroups.set(12,{id:12,windowId:4,title:'DeepSeek Harness',color:'red'});
+for(const id of [10,11,12])tabs.set(id+10,{id:id+10,windowId:4,groupId:id});
+const count=tabs.size;await vm.runInContext('dshClearLegacyTaskGroups()',group);
+assert.equal(tabs.get(20).groupId,-1);assert.equal(tabs.get(21).groupId,11);assert.equal(tabs.get(22).groupId,12);assert.equal(tabs.size,count);
+assert.deepEqual(ungrouped,[[20]],'Legacy label cleanup preserves every page and unrelated groups');
+await events.startup();await new Promise(r=>setImmediate(r));assert.equal(tabs.size,count);
 const pointerMessages=[], nativeCommands=[];let detach,ready,removed,blockVisual=false;
 const pointer=vm.createContext({console,setTimeout,clearTimeout,chrome:{runtime:{id:'ours',onMessage:{addListener:fn=>ready=fn}},
  tabs:{sendMessage:async(tabId,message)=>{pointerMessages.push({tabId,message});if(blockVisual)return new Promise(()=>{});return{dshVisual:true};},get:async id=>({id,windowId:id===99?88:4}),query:async()=>[{id:7,windowId:4}],onRemoved:{addListener:fn=>removed=fn}},

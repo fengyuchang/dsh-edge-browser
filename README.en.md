@@ -4,7 +4,7 @@ Visible, background control of your everyday Edge browser for DeepSeek Harness.
 
 [中文](README.md) · [Downloads](https://github.com/fengyuchang/dsh-edge-browser/releases/latest) · [Project site](https://fengyuchang.github.io/dsh-edge-browser/)
 
-**Latest: 0.4.2-dsh.6, 2026-11-15.** Fixes a role/label query that can hang on hidden pages, propagates cancellation to safe reads while preserving input cleanup, and distinguishes unknown refs from absent targets or unavailable viewport measurements. Adds minimized-window and late-reply validation. See the [fixes and validation scope](docs/recovery-0.4.2-dsh.6.md) and [features and agent-browser comparison](docs/automation-0.4.2-dsh.5.md).
+**Latest: 0.4.2-dsh.7, 2026-11-16.** Recovers actual zero-sized renderer viewports without bringing the task window forward and lets resize recover from zero. Removes persistent task tab grouping and clears the old blue “DeepSeek Harness” label while keeping its pages. Corrects the dsh.6 startup-size validation claim. See the [fixes and validation scope](docs/recovery-0.4.2-dsh.7.md) and [features and agent-browser comparison](docs/automation-0.4.2-dsh.5.md).
 
 Built on Tencent BrowserSkill 0.4.2. This community customization reuses the
 browser's signed-in sessions, controls task tabs without moving the system mouse,

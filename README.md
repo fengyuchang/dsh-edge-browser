@@ -18,7 +18,7 @@
 
 基于 [Tencent BrowserSkill](https://github.com/Tencent/BrowserSkill) 0.4.2 的社区定制，接入 DeepSeek Harness。它连接你已登录的真实 Edge，在任务窗口中读取和操作网页，不移动系统鼠标；你可以观察过程、框选反馈，并在验证码等步骤接手。
 
-**最新 0.4.2-dsh.6 · 2026-11-15：** 修复隐藏页面的角色/标签查询可能一直不返回，以及取消后读取仍占住操作的问题；区分未观察到的引用、语义目标不存在和视口不可测量。补充纯最小化窗口与迟到回执验收。语义定位、小批量操作、版本诊断与原有协作界面继续保留。[修复与验证范围](docs/recovery-0.4.2-dsh.6.md) · [功能与 agent-browser 对照](docs/automation-0.4.2-dsh.5.md) · [升级说明](docs/installation.md#日常更新与使用)。
+**最新 0.4.2-dsh.7 · 2026-11-16：** 修复后台任务页渲染视口实际为 `0×0` 时无法观察、截图和点击，以及调整窗口也被零尺寸挡住的问题。只恢复本任务页面的渲染尺寸，保持后台窗口状态；同步前检查真实视口，恢复失败明确拒绝输入。取消任务自动分组，清理旧蓝色“DeepSeek Harness”标签组并保留网页。纠正 dsh.6 验收中遗漏的启动尺寸参数说明。[修复与验证范围](docs/recovery-0.4.2-dsh.7.md) · [功能与 agent-browser 对照](docs/automation-0.4.2-dsh.5.md) · [升级说明](docs/installation.md#日常更新与使用)。
 
 本项目不是 DeepSeek 或 Microsoft 官方扩展。现有登录由 Edge 使用；无需导出密码或 Cookie。这里的“后台”指真实浏览器的任务页操作，不是不可见的独立 headless 浏览器。
 

@@ -1,11 +1,61 @@
 diff --git a/apps/extension/src/browser-driver/__tests__/chromium-cdp.test.ts b/apps/extension/src/browser-driver/__tests__/chromium-cdp.test.ts
-index 3d475fa..4a93c5f 100644
+index 3d475fa..356864b 100644
 --- a/apps/extension/src/browser-driver/__tests__/chromium-cdp.test.ts
 +++ b/apps/extension/src/browser-driver/__tests__/chromium-cdp.test.ts
-@@ -38,6 +38,29 @@ afterEach(() => {
+@@ -38,6 +38,79 @@ afterEach(() => {
  });
  
  describe("ChromiumCdp", () => {
++  it("repairs a genuinely zero task viewport and preserves later explicit emulation", async () => {
++    const { api } = fakeApi();
++    let viewport = { clientWidth: 0, clientHeight: 0 };
++    vi.mocked(api.sendCommand).mockImplementation(async (_target, method, params) => {
++      if (method === "Page.getLayoutMetrics") return { cssLayoutViewport: viewport };
++      if (method === "Emulation.setDeviceMetricsOverride") {
++        const size = params as { width: number; height: number };
++        viewport = { clientWidth: size.width, clientHeight: size.height };
++      }
++      return {};
++    });
++    const driver = new ChromiumCdp(api);
++    expect(await driver.ensureBackgroundViewport(7, () => true)).toBe(true);
++    expect(viewport).toEqual({ clientWidth: 1280, clientHeight: 800 });
++    expect(await driver.ensureBackgroundViewport(7, () => true)).toBe(false);
++    await driver.setDeviceMetricsOverride(7, { width: 390, height: 844, deviceScaleFactor: 3, mobile: true });
++    await driver.clearBackgroundViewport(7);
++    expect(viewport.clientWidth).toBe(390);
++    expect(vi.mocked(api.sendCommand).mock.calls.some(call => call[1] === "Emulation.clearDeviceMetricsOverride")).toBe(false);
++    await driver.detachAll();
++  });
++  it("refuses viewport repair after ownership changes during the read", async () => {
++    const { api } = fakeApi();
++    let owned = true;
++    vi.mocked(api.sendCommand).mockImplementation(async (_target, method) => {
++      if (method === "Page.getLayoutMetrics") { owned = false; return { cssLayoutViewport: { clientWidth: 0, clientHeight: 0 } }; }
++      return {};
++    });
++    const driver = new ChromiumCdp(api);
++    await expect(driver.ensureBackgroundViewport(7, () => owned)).rejects.toThrow("ownership or attachment changed");
++    expect(vi.mocked(api.sendCommand).mock.calls.some(call => call[1] === "Emulation.setDeviceMetricsOverride")).toBe(false);
++    await driver.detachAll();
++  });
++  it("clears only its fallback when the last background owner releases control", async () => {
++    const { api } = fakeApi();
++    let viewport = { clientWidth: 0, clientHeight: 0 };
++    vi.mocked(api.sendCommand).mockImplementation(async (_target, method) => {
++      if (method === "Page.getLayoutMetrics") return { cssLayoutViewport: viewport };
++      if (method === "Emulation.setDeviceMetricsOverride") viewport = { clientWidth: 1280, clientHeight: 800 };
++      return {};
++    });
++    const driver = new ChromiumCdp(api);
++    await driver.acquireBackgroundExecution("first", 7);await driver.acquireBackgroundExecution("second", 7);
++    await driver.ensureBackgroundViewport(7, () => true);
++    await driver.releaseBackgroundExecution("first", 7);
++    expect(vi.mocked(api.sendCommand).mock.calls.filter(call => call[1] === "Emulation.clearDeviceMetricsOverride")).toHaveLength(0);
++    await driver.releaseBackgroundExecution("second", 7);
++    expect(vi.mocked(api.sendCommand).mock.calls.filter(call => call[1] === "Emulation.clearDeviceMetricsOverride")).toHaveLength(1);
++    await driver.detachAll();
++  });
 +  it.each(["send", "sendGuarded"] as const)("cancels an in-flight %s read without allowing late reads through", async (method) => {
 +    const { api } = fakeApi();
 +    const driver = new ChromiumCdp(api);
@@ -32,8 +82,21 @@ index 3d475fa..4a93c5f 100644
    it.each([
      "abort",
      "replacement",
+diff --git a/apps/extension/src/browser-driver/background-execution.ts b/apps/extension/src/browser-driver/background-execution.ts
+index 9daafe0..a5130d3 100644
+--- a/apps/extension/src/browser-driver/background-execution.ts
++++ b/apps/extension/src/browser-driver/background-execution.ts
+@@ -20,6 +20,8 @@ export class BackgroundExecution {
+     return this.owners.get(tabId)?.has(sessionId) ?? false;
+   }
+ 
++  hasOwners(tabId: number): boolean { return this.owners.has(tabId); }
++
+   release(sessionId: string, tabId: number): void {
+     const owners = this.owners.get(tabId);
+     owners?.delete(sessionId);
 diff --git a/apps/extension/src/browser-driver/chromium-cdp.ts b/apps/extension/src/browser-driver/chromium-cdp.ts
-index 9da254e..338d89f 100644
+index 9da254e..67d2b10 100644
 --- a/apps/extension/src/browser-driver/chromium-cdp.ts
 +++ b/apps/extension/src/browser-driver/chromium-cdp.ts
 @@ -32,8 +32,9 @@ import type {
@@ -56,7 +119,73 @@ index 9da254e..338d89f 100644
    get onEvent() {
      return chrome.debugger.onEvent;
    },
-@@ -375,7 +376,7 @@ export class ChromiumCdp {
+@@ -190,6 +191,7 @@ export class ChromiumCdp {
+     (tabId, enabled) =>
+       this.api.sendCommand({ tabId }, "Emulation.setFocusEmulationEnabled", { enabled }),
+   );
++  private readonly backgroundViewports = new Map<number, string>();
+   private readonly tabOwners = new Map<number, Set<string>>();
+   private readonly pendingDialogEntries = new Map<
+     number,
+@@ -285,6 +287,57 @@ export class ChromiumCdp {
+   async releaseBackgroundExecution(sessionId: string, tabId: number): Promise<void> {
+     this.backgroundExecution.release(sessionId, tabId);
+     await this.backgroundExecution.synchronize(tabId);
++    if (!this.backgroundExecution.hasOwners(tabId)) await this.clearBackgroundViewport(tabId);
++  }
++
++  async ensureBackgroundViewport(tabId: number, authorized: () => boolean, signal?: AbortSignal, size?: { width: number; height: number }): Promise<boolean> {
++    signal?.throwIfAborted();
++    if (!authorized()) throw new Error("Background viewport control ended");
++    await this.ensureAttached(tabId);
++    const attachment = this.getAttachmentId(tabId);
++    const check = () => {
++      signal?.throwIfAborted();
++      if (!attachment || this.getAttachmentId(tabId) !== attachment || !authorized())
++        throw new Error("Background viewport ownership or attachment changed");
++    };
++    const read = async () => {
++      const result = await this.command({ tabId }, "Page.getLayoutMetrics", {}, READ_TIMEOUT_MS, check, signal) as { cssLayoutViewport?: { clientWidth: number; clientHeight: number } };
++      check();
++      return result;
++    };
++    const before = (await read()).cssLayoutViewport;
++    if (!size && before && before.clientWidth > 0 && before.clientHeight > 0) return false;
++    if (!before || !Number.isFinite(before.clientWidth) || !Number.isFinite(before.clientHeight))
++      throw new Error("Task viewport could not be measured; no input was sent");
++    const desired = size ?? { width: 1280, height: 800 };
++    if (![desired.width, desired.height].every(n => Number.isSafeInteger(n) && n >= 100 && n <= 7680))
++      throw new Error("Background viewport size must be in 100..7680");
++    check();
++    this.backgroundViewports.set(tabId, attachment!);
++    try {
++      // Neutral desktop metrics repair the renderer, keeping the OS window minimized.
++      // Ownership is recorded before awaiting so handoff/late replies can clear it.
++      await this.command({ tabId }, "Emulation.setDeviceMetricsOverride", { ...desired, deviceScaleFactor: 0, mobile: false }, READ_TIMEOUT_MS, check);
++      check();
++      const after = (await read()).cssLayoutViewport;
++      if (!after || !(after.clientWidth > 0 && after.clientHeight > 0))
++        throw new Error("Task viewport is still zero-sized after background recovery; no input was sent");
++      return true;
++    } catch (error) {
++      await this.clearBackgroundViewport(tabId).catch(() => {});
++      throw error;
++    }
++  }
++
++  /** Clear only our fallback, never a later explicit device-emulation request. */
++  async clearBackgroundViewport(tabId: number): Promise<void> {
++    const attachment = this.backgroundViewports.get(tabId);
++    if (!attachment) return;
++    this.backgroundViewports.delete(tabId);
++    if (this.getAttachmentId(tabId) !== attachment) return;
++    await this.command({ tabId }, "Emulation.clearDeviceMetricsOverride", {}, 1000, () => {
++      if (this.getAttachmentId(tabId) !== attachment) throw new Error("Viewport attachment changed during cleanup");
++    });
+   }
+ 
+   /** Resend this session's override when Chrome lost it without clearing the applied-state cache. */
+@@ -375,7 +428,7 @@ export class ChromiumCdp {
      await this.ensureAttached(tabId);
      signal?.throwIfAborted();
      try {
@@ -65,7 +194,7 @@ index 9da254e..338d89f 100644
        return result as T;
      } catch (err) {
        throw normalizeError(err);
-@@ -413,7 +414,7 @@ export class ChromiumCdp {
+@@ -413,7 +466,7 @@ export class ChromiumCdp {
          )
            throw new Error("Debugger attachment changed before dispatch");
          guard.onDispatch?.();
@@ -74,6 +203,44 @@ index 9da254e..338d89f 100644
      } catch (err) {
        throw normalizeError(err);
      }
+@@ -535,11 +588,13 @@ export class ChromiumCdp {
+ 
+   /** `Emulation.setDeviceMetricsOverride` — pin the tab's viewport metrics. */
+   async setDeviceMetricsOverride(tabId: number, metrics: DeviceMetricsOverride): Promise<void> {
++    this.backgroundViewports.delete(tabId);
+     await this.send(tabId, "Emulation.setDeviceMetricsOverride", { ...metrics });
+   }
+ 
+   /** `Emulation.clearDeviceMetricsOverride` — restore native viewport metrics. */
+   async clearDeviceMetricsOverride(tabId: number): Promise<void> {
++    this.backgroundViewports.delete(tabId);
+     await this.send(tabId, "Emulation.clearDeviceMetricsOverride", {});
+   }
+ 
+@@ -652,6 +707,7 @@ export class ChromiumCdp {
+     this.attachmentIds.delete(tabId);
+     this.options.onDocumentChanged?.(tabId);
+     this.backgroundExecution.invalidate(tabId);
++    this.backgroundViewports.delete(tabId);
+     this.clearDialogState(tabId);
+     this.clearConsoleState(tabId);
+     this.clearNetworkState(tabId);
+@@ -748,6 +804,7 @@ export class ChromiumCdp {
+     this.claimAttempts.clear();
+     this.tabOwners.clear();
+     this.backgroundExecution.clear();
++    this.backgroundViewports.clear();
+     this.attachedTabs.clear();
+     this.attachmentIds.clear();
+     for (const tabId of tabs) this.options.onDocumentChanged?.(tabId);
+@@ -1363,6 +1420,7 @@ export class ChromiumCdp {
+           (this.attachmentVersions.get(source.tabId) ?? 0) + 1,
+         );
+         this.backgroundExecution.invalidate(source.tabId);
++        this.backgroundViewports.delete(source.tabId);
+         if (_reason === "target_closed") {
+           this.claimAttempts.delete(source.tabId);
+           this.tabOwners.delete(source.tabId);
 diff --git a/apps/extension/src/browser-driver/command-deadline.ts b/apps/extension/src/browser-driver/command-deadline.ts
 index f3b4ad2..fa9cd98 100644
 --- a/apps/extension/src/browser-driver/command-deadline.ts
@@ -920,11 +1087,59 @@ index 0bb3026..8f26f81 100644
            ...(release ? { signal: undefined, attachmentId: leases.get(identity) } : {}),
            onDispatch: check,
          });
+diff --git a/apps/extension/src/cooperation/controller.test.ts b/apps/extension/src/cooperation/controller.test.ts
+index 2529dea..dab675d 100644
+--- a/apps/extension/src/cooperation/controller.test.ts
++++ b/apps/extension/src/cooperation/controller.test.ts
+@@ -1670,6 +1670,7 @@ describe("cooperation is the session default", () => {
+   ])("fences typed device setup when human navigation intervenes (partial=%s)", async (partial) => {
+     const f = await fixture({ url: "about:blank", sync: false });
+     const cdp = Object.assign(f.cdp, {
++      backgroundViewports: new Map<number, string>(),
+       setDeviceMetricsOverride: ChromiumCdp.prototype.setDeviceMetricsOverride,
+       clearDeviceMetricsOverride: ChromiumCdp.prototype.clearDeviceMetricsOverride,
+       setUserAgentOverride: ChromiumCdp.prototype.setUserAgentOverride,
+@@ -1704,6 +1705,7 @@ describe("cooperation is the session default", () => {
+   ])("keeps its own responsive layout changes within one device action (off=%s)", async (off) => {
+     const f = await fixture();
+     const cdp = Object.assign(f.cdp, {
++      backgroundViewports: new Map<number, string>(),
+       setDeviceMetricsOverride: ChromiumCdp.prototype.setDeviceMetricsOverride,
+       clearDeviceMetricsOverride: ChromiumCdp.prototype.clearDeviceMetricsOverride,
+       setUserAgentOverride: ChromiumCdp.prototype.setUserAgentOverride,
 diff --git a/apps/extension/src/cooperation/controller.ts b/apps/extension/src/cooperation/controller.ts
-index 02d307c..6bf61b0 100644
+index 02d307c..aeb4ae5 100644
 --- a/apps/extension/src/cooperation/controller.ts
 +++ b/apps/extension/src/cooperation/controller.ts
-@@ -788,7 +788,7 @@ export class CooperationController implements ControlAuthority {
+@@ -6,6 +6,7 @@ import {
+ } from "@/session-manager/manager";
+ import { type ResolvedActionTarget, resolveActionTarget } from "@/tools/interaction";
+ import { captureVomObservation, handleSnapshot } from "@/tools/observation";
++import { prepareTaskViewport } from "@/tools/background-viewport";
+ import { type CdpRunner, chromeTabsApi, isRpcError, resolveTargetTab } from "@/tools/shared";
+ import { lookupSnapshotRef } from "@/tools/snapshot-ref";
+ import type { DragTarget, RequestFrame, RpcError } from "@/transport/types";
+@@ -771,13 +772,18 @@ export class CooperationController implements ControlAuthority {
+       if (!targetPolicy) state.context = undefined;
+       this.changed(state);
+       try {
++        const viewportRepaired = await prepareTaskViewport(this.deps.sessions, session, target, cdp, signal, {
++          allowed: () => !state.held && !state.stopped && !this.humanActive(state),
++        });
++        if (isRpcError(viewportRepaired)) return viewportRepaired;
++        if (viewportRepaired) await this.refresh(state);
+         const before = state.frames;
+         const epoch = state.epoch;
+         const frameEpoch = state.frameEpoch;
+         const baseline = state.baseline;
+         let evidence = baseline?.evidence;
+         const delta =
+-          baseline &&
++          !viewportRepaired && baseline &&
+           baseline.frameEpoch === frameEpoch &&
+           (!targetPolicy || sameFrames(baseline.frames, before, "revision")) &&
+           [...before.values()].every((frame) => frame.fieldsComplete !== false) &&
+@@ -788,7 +794,7 @@ export class CooperationController implements ControlAuthority {
          // A delta updates the model's field values. Refresh private semantic
          // evidence too, without replacing refs or repeating page text to the model.
          if (delta && !sameFields(baseline.frames, before))
@@ -933,7 +1148,7 @@ index 02d307c..6bf61b0 100644
              signal,
              conditionalSurfaceProbe: false,
              onScene: (scene) => {
-@@ -801,7 +801,7 @@ export class CooperationController implements ControlAuthority {
+@@ -801,7 +807,7 @@ export class CooperationController implements ControlAuthority {
                this.deps.sessions,
                { session_id: params.session_id, tab_id: state.tabId, max_tokens: params.max_tokens },
                {
@@ -942,7 +1157,7 @@ index 02d307c..6bf61b0 100644
                  tabsApi: chromeTabsApi,
                  refStore,
                  onScene: (scene) => {
-@@ -1176,6 +1176,7 @@ export class CooperationController implements ControlAuthority {
+@@ -1176,6 +1182,7 @@ export class CooperationController implements ControlAuthority {
          const result = await invoke(cdp);
          const outcome = (result as { outcome?: string } | undefined)?.outcome;
          if (outcome === "cancelled") this.stopSession(state.sessionId);
@@ -950,7 +1165,7 @@ index 02d307c..6bf61b0 100644
          if (outcome === "continued" || outcome === "completed") {
            this.preserve(state);
            await this.deps.resumeFrames(state.tabId, state.lease, state.frameRepairs);
-@@ -1196,7 +1197,7 @@ export class CooperationController implements ControlAuthority {
+@@ -1196,7 +1203,7 @@ export class CooperationController implements ControlAuthority {
          ["start", "stop", "status", "read", "list", "capabilities"].includes(action ?? ""))
      ) {
        req.params = { ...params, tab_id: params.tab_id ?? this.defaultTabs.get(session.sessionId) };
@@ -959,7 +1174,7 @@ index 02d307c..6bf61b0 100644
      }
      const bound = params.context_id
        ? [...this.tabs.values()].find(
-@@ -1226,7 +1227,7 @@ export class CooperationController implements ControlAuthority {
+@@ -1226,7 +1233,7 @@ export class CooperationController implements ControlAuthority {
      if (isRpcError(target)) return target;
      req.params = { ...params, tab_id: target.tabId };
      if (!isAgentControlledTab(session, target.tabId)) {
@@ -968,16 +1183,25 @@ index 02d307c..6bf61b0 100644
        return failure("Actions require an owned task tab; borrow user tabs explicitly");
      }
      const state = this.track(session, target.tabId);
-@@ -1251,7 +1252,7 @@ export class CooperationController implements ControlAuthority {
+@@ -1251,7 +1258,16 @@ export class CooperationController implements ControlAuthority {
          };
        return this.bootstrap(state, req.method, cdp, signal, invoke);
      }
 -    if (read) return invoke(guardedRunner(cdp));
-+    if (read) return invoke(guardedRunner(cdp, { signal }));
++    if (read) {
++      if (!state.held && !state.stopped && !this.humanActive(state)) {
++        const repaired = await prepareTaskViewport(this.deps.sessions, session, target, cdp, signal, {
++          allowed: () => !state.held && !state.stopped && !this.humanActive(state),
++        });
++        if (isRpcError(repaired)) return repaired;
++        if (repaired) { state.context = undefined; state.baseline = undefined; }
++      }
++      return invoke(guardedRunner(cdp, { signal }));
++    }
      if (state.working) return failure("Another operation is settling on this tab");
      const expectations = parseExpectations(params.expect);
      if (isRpcError(expectations)) return expectations;
-@@ -1393,7 +1394,7 @@ export class CooperationController implements ControlAuthority {
+@@ -1393,7 +1409,7 @@ export class CooperationController implements ControlAuthority {
          throw new Error((revoked = "Page changed; synchronize before choosing an action"));
        const before = state.frames;
        let evidence: ObservationEvidence | undefined;
@@ -986,7 +1210,7 @@ index 02d307c..6bf61b0 100644
          signal,
          conditionalSurfaceProbe: false,
          onScene: (scene) => {
-@@ -1596,7 +1597,7 @@ export class CooperationController implements ControlAuthority {
+@@ -1596,7 +1612,7 @@ export class CooperationController implements ControlAuthority {
          );
        if (!visual && (primaryTarget?.ref || primaryTarget?.selector)) {
          const resolved = await resolveActionTarget(
@@ -995,7 +1219,7 @@ index 02d307c..6bf61b0 100644
            session,
            target,
            primaryTarget,
-@@ -1615,7 +1616,7 @@ export class CooperationController implements ControlAuthority {
+@@ -1615,7 +1631,7 @@ export class CooperationController implements ControlAuthority {
        }
        if (req.method === "tool.drag" && (params.target?.ref || params.target?.selector)) {
          const resolved = await resolveActionTarget(
@@ -1004,7 +1228,7 @@ index 02d307c..6bf61b0 100644
            session,
            target,
            params.target,
-@@ -1648,7 +1649,7 @@ export class CooperationController implements ControlAuthority {
+@@ -1648,7 +1664,7 @@ export class CooperationController implements ControlAuthority {
            evidenceTargets = [];
            for (const dependency of params.depends_on) {
              const resolved = await resolveActionTarget(
@@ -1013,7 +1237,7 @@ index 02d307c..6bf61b0 100644
                session,
                target,
                /^@?e\d+$/.test(dependency) ? { ref: dependency } : { selector: dependency },
-@@ -1693,6 +1694,7 @@ export class CooperationController implements ControlAuthority {
+@@ -1693,6 +1709,7 @@ export class CooperationController implements ControlAuthority {
        this.changed(state);
        let result = await invoke(
          guardedRunner(cdp, {
@@ -1021,6 +1245,20 @@ index 02d307c..6bf61b0 100644
            scriptedEffect: req.method === "tool.evaluate",
            prepare: async (input, method) => {
              assert();
+diff --git a/apps/extension/src/cooperation/live-text.browser.test.ts b/apps/extension/src/cooperation/live-text.browser.test.ts
+index 639874c..9daf5a8 100644
+--- a/apps/extension/src/cooperation/live-text.browser.test.ts
++++ b/apps/extension/src/cooperation/live-text.browser.test.ts
+@@ -183,7 +183,8 @@ async function withCooperation(
+           if (method === "Accessibility.getFullAXTree") captures.accessibility++;
+           return local(method, params);
+         };
+-        const cdp: CdpRunner & EmulateCdpRunner = {
++        const cdp: CdpRunner & EmulateCdpRunner & { backgroundViewports: Map<number, string> } = {
++          backgroundViewports: new Map(),
+           send: (_tabId, method, params) => instrumented(method, params),
+           sendToTarget: (_target, method, params) => instrumented(method, params),
+           getAttachmentId: () => sessionId,
 diff --git a/apps/extension/src/debug/capabilities.ts b/apps/extension/src/debug/capabilities.ts
 index aa0f904..7f2f9c1 100644
 --- a/apps/extension/src/debug/capabilities.ts
@@ -1042,19 +1280,27 @@ index aa0f904..7f2f9c1 100644
        build: typeof __BSK_EXT_BUILD__ === "string" ? __BSK_EXT_BUILD__ : "unknown",
      },
 diff --git a/apps/extension/src/entrypoints/__tests__/background-overlays.test.ts b/apps/extension/src/entrypoints/__tests__/background-overlays.test.ts
-index f65b5e6..1979282 100644
+index f65b5e6..53258fb 100644
 --- a/apps/extension/src/entrypoints/__tests__/background-overlays.test.ts
 +++ b/apps/extension/src/entrypoints/__tests__/background-overlays.test.ts
-@@ -89,6 +89,8 @@ async function fixture() {
+@@ -82,6 +82,7 @@ async function fixture() {
+   const onAttached = event<[number, chrome.tabs.TabAttachInfo]>();
+   const onCreated = event<[chrome.tabs.Tab]>();
+   const onCreatedNavigationTarget = event<[{ tabId: number; sourceTabId: number }]>();
++  const onBoundsChanged = event<[chrome.windows.Window]>();
+   const sendMessage = vi.fn(
+     async (_tabId: number, message: OverlayAgentStateMessage): Promise<unknown> => {
+       overlay.applyAgentControlMode(message.sessionId, message.mode, message.controller);
+@@ -89,6 +90,8 @@ async function fixture() {
      },
    );
    vi.stubGlobal("chrome", {
-+    windows: { onRemoved: event() },
++    windows: { onRemoved: event(), onBoundsChanged },
 +    commands: { onCommand: event() },
      tabs: {
        sendMessage,
        get: vi.fn(async () => ({ url: "https://example.test" })),
-@@ -111,6 +113,7 @@ async function fixture() {
+@@ -111,6 +114,7 @@ async function fixture() {
      },
      debugger: { onDetach: event() },
      webNavigation: {
@@ -1062,6 +1308,33 @@ index f65b5e6..1979282 100644
        onBeforeNavigate: event(),
        onCompleted: event(),
        onErrorOccurred: event(),
+@@ -135,12 +139,26 @@ async function fixture() {
+     onAttached,
+     onCreated,
+     onCreatedNavigationTarget,
++    onBoundsChanged,
+     sendMessage,
+     deps,
+     task,
+   };
+ }
+ 
++it("clears fallback viewport only for owned task tabs when their task window is restored", async () => {
++  const f = await fixture();
++  const clear = vi.mocked(ChromiumCdp.prototype.clearBackgroundViewport).mockResolvedValue();
++  vi.mocked(chrome.tabs.query).mockResolvedValue([{ id: 10, windowId: 10 }, { id: 99, windowId: 10 }] as chrome.tabs.Tab[]);
++  f.onBoundsChanged.emit({ id: 10, state: "minimized" } as chrome.windows.Window);
++  f.onBoundsChanged.emit({ id: 99, state: "normal" } as chrome.windows.Window);
++  await Promise.resolve();
++  expect(clear).not.toHaveBeenCalled();
++  f.onBoundsChanged.emit({ id: 10, state: "normal" } as chrome.windows.Window);
++  await Promise.resolve();
++  expect(clear).toHaveBeenCalledExactlyOnceWith(10);
++});
++
+ it("keeps task tabs ungrouped while showing controls after creation and attachment", async () => {
+   vi.useFakeTimers();
+   const f = await fixture();
 diff --git a/apps/extension/src/entrypoints/__tests__/content-video-recovery.test.ts b/apps/extension/src/entrypoints/__tests__/content-video-recovery.test.ts
 index 5a2a4b7..3582fd2 100644
 --- a/apps/extension/src/entrypoints/__tests__/content-video-recovery.test.ts
@@ -1127,7 +1400,7 @@ index 5a2a4b7..3582fd2 100644
    expect(f.visible("control-overlay")).toBe(false);
    expect(f.find(".bsk-cooperation-target")).toBeNull();
 diff --git a/apps/extension/src/entrypoints/background.ts b/apps/extension/src/entrypoints/background.ts
-index 3809017..a13a09f 100644
+index 3809017..6c1f162 100644
 --- a/apps/extension/src/entrypoints/background.ts
 +++ b/apps/extension/src/entrypoints/background.ts
 @@ -1,4 +1,8 @@
@@ -1150,7 +1423,20 @@ index 3809017..a13a09f 100644
    const controller = new ConnectionController();
    let remoteEndpoint: RemoteEndpoint | null = null;
    let connectionPreferenceValid = false;
-@@ -332,6 +340,7 @@ export default defineBackground(() => {
+@@ -148,6 +156,12 @@ export default defineBackground(() => {
+     },
+   });
+   const debug = new DebugManager(sessions, cdp, chrome.tabs, Date.now, new LocalDebugArchive());
++  chrome.windows.onBoundsChanged?.addListener((window) => {
++    if (window.id === undefined || !["normal", "maximized", "fullscreen"].includes(window.state ?? "")) return;
++    const session = sessions.findByWindowId(window.id);
++    if (!session) return;
++    void chrome.tabs.query({ windowId: window.id }).then(tabs => Promise.all(tabs.filter(tab => tab.id !== undefined && isAgentControlledTab(session, tab.id)).map(tab => cdp.clearBackgroundViewport(tab.id!)))).catch(() => {});
++  });
+   attachDebugBridge(sessions, debug);
+   const videoHost = new BrowserVideoHost();
+   let upgradeNotice: ReturnType<typeof attachDaemonUpgradeNotice> | undefined;
+@@ -332,6 +346,7 @@ export default defineBackground(() => {
    }
  
    function onOverlaySessionStateChanged(): void {
@@ -1262,6 +1548,32 @@ index 8262e63..9b21e2f 100644
        url: AGENT_WINDOW_HOME,
      });
    });
+diff --git a/apps/extension/src/session-manager/__tests__/tab-detachment-cdp.test.ts b/apps/extension/src/session-manager/__tests__/tab-detachment-cdp.test.ts
+index 079cb12..4281712 100644
+--- a/apps/extension/src/session-manager/__tests__/tab-detachment-cdp.test.ts
++++ b/apps/extension/src/session-manager/__tests__/tab-detachment-cdp.test.ts
+@@ -45,7 +45,11 @@ async function fixture() {
+       await finishAttach.promise;
+     }),
+     detach: vi.fn(async () => {}),
+-    sendCommand: vi.fn<CdpDebuggerApi["sendCommand"]>(async () => ({})),
++    sendCommand: vi.fn<CdpDebuggerApi["sendCommand"]>(async (_target, method) =>
++      method === "Page.getLayoutMetrics"
++        ? { cssLayoutViewport: { clientWidth: 1280, clientHeight: 800 } }
++        : {},
++    ),
+     onEvent: event<[chrome.debugger.Debuggee, string, unknown]>(),
+     onDetach: event<[chrome.debugger.Debuggee, string]>(),
+   };
+@@ -252,6 +256,8 @@ async function pendingSnapshot() {
+       };
+     }
+     if (method === "DOM.getFrameOwner") return { backendNodeId: 3 };
++    if (method === "Page.getLayoutMetrics")
++      return { cssLayoutViewport: { clientWidth: 1280, clientHeight: 800 } };
+     return {};
+   });
+   const result = f.readSnapshot();
 diff --git a/apps/extension/src/session-manager/agent-window.ts b/apps/extension/src/session-manager/agent-window.ts
 index 09a3b07..a350917 100644
 --- a/apps/extension/src/session-manager/agent-window.ts
@@ -1844,6 +2156,74 @@ index 76d6950..8423f7b 100644
    });
  });
  
+diff --git a/apps/extension/src/tools/__tests__/window.test.ts b/apps/extension/src/tools/__tests__/window.test.ts
+index f837ba4..8414581 100755
+--- a/apps/extension/src/tools/__tests__/window.test.ts
++++ b/apps/extension/src/tools/__tests__/window.test.ts
+@@ -78,6 +78,24 @@ function resizeFixture(
+ }
+ 
+ describe("handleWindowResize", () => {
++  it("allows an owned zero viewport through resize and verifies its recovery", async () => {
++    const sm = await makeManager(), f = resizeFixture();
++    f.state.viewport = { width: 0, height: 0 };
++    const result = await handleWindowResize(sm, { session_id: "aa11", width: 1280, height: 800 }, f.deps);
++    expect(result).toEqual({ window_id: 100, width: 1280, height: 800 });
++    expect(f.windows.update).toHaveBeenCalledOnce();
++    expect(f.state.viewport.width).toBeGreaterThan(0);
++  });
++  it("repairs a frozen zero renderer after updating its owned window", async () => {
++    const sm = await makeManager(), f = resizeFixture({ frozenViewport: true });
++    f.state.viewport = { width: 0, height: 0 };
++    f.cdp.ensureBackgroundViewport = vi.fn(async (_id, authorized, _signal, size) => {
++      expect(authorized()).toBe(true);f.state.viewport = size!;return true;
++    });
++    const result = await handleWindowResize(sm, { session_id: "aa11", width: 1280, height: 800 }, f.deps);
++    expect(result).toEqual({ window_id: 100, width: 1280, height: 800 });
++    expect(f.cdp.ensureBackgroundViewport).toHaveBeenCalledOnce();
++  });
+   it("resizes the session's Agent Window", async () => {
+     const sm = await makeManager();
+     const f = resizeFixture();
+diff --git a/apps/extension/src/tools/background-execution.ts b/apps/extension/src/tools/background-execution.ts
+index 9b81e2d..b43d3dc 100644
+--- a/apps/extension/src/tools/background-execution.ts
++++ b/apps/extension/src/tools/background-execution.ts
+@@ -1,5 +1,6 @@
+ import { isAgentControlledTab, type SessionManager } from "@/session-manager/manager";
+ import type { RequestFrame, RpcError } from "@/transport/types";
++import { prepareTaskViewport } from "./background-viewport";
+ import { extractTargetTab } from "./extract";
+ import {
+   type CdpRunner,
+@@ -86,6 +87,8 @@ export async function prepareBackgroundExecution(
+   if (signal.aborted) return { code: "cancelled", message: "Background execution setup cancelled" };
+   try {
+     await cdp.acquireBackgroundExecution(ctx.sessionId, target.tabId);
++    const viewport = await prepareTaskViewport(manager, ctx, target, cdp, signal);
++    if (isRpcError(viewport)) return viewport;
+     if (manager.get(ctx.sessionId) !== ctx || !isAgentControlledTab(ctx, target.tabId)) {
+       await cdp.releaseSessionTab?.(ctx.sessionId, target.tabId);
+       return {
+diff --git a/apps/extension/src/tools/background-viewport.ts b/apps/extension/src/tools/background-viewport.ts
+new file mode 100644
+index 0000000..09e0a0e
+--- /dev/null
++++ b/apps/extension/src/tools/background-viewport.ts
+@@ -0,0 +1,13 @@
++import { isAgentControlledTab, type SessionContext, type SessionManager } from "@/session-manager/manager";
++import type { RpcError } from "@/transport/types";
++import type { CdpRunner, ResolvedTargetTab } from "./shared";
++
++export async function prepareTaskViewport(manager: SessionManager, session: SessionContext, target: ResolvedTargetTab, cdp: CdpRunner, signal?: AbortSignal, options: { allowed?: () => boolean; size?: { width: number; height: number } } = {}): Promise<boolean | RpcError> {
++  if (!cdp.ensureBackgroundViewport || target.windowId !== session.agentWindowId || !isAgentControlledTab(session, target.tabId)) return false;
++  try {
++    return await cdp.ensureBackgroundViewport(target.tabId, () => manager.get(session.sessionId) === session && isAgentControlledTab(session, target.tabId) && (options.allowed?.() ?? true), signal, options.size);
++  } catch (error) {
++    if (signal?.aborted) return { code: "cancelled", message: "Background viewport setup cancelled", data: { effect_state: "none" } };
++    return { code: "cdp_failed", message: `Task viewport is not ready: ${error instanceof Error ? error.message : String(error)}`, data: { reason: "input_not_ready", effect_state: "none", recovery: "No page input was sent. Wait and synchronize; do not guess targets or automatically activate the browser." } };
++  }
++}
 diff --git a/apps/extension/src/tools/click-overlay.ts b/apps/extension/src/tools/click-overlay.ts
 index 0040a16..9abb72a 100644
 --- a/apps/extension/src/tools/click-overlay.ts
@@ -2285,6 +2665,19 @@ index dc5fd0e..d26e5d2 100644
    // Step 2: clear the per-session RefStore (review M6/M7 parity).
    ctx.refStore.clear();
  
+diff --git a/apps/extension/src/tools/shared.ts b/apps/extension/src/tools/shared.ts
+index 6309346..8766ea5 100644
+--- a/apps/extension/src/tools/shared.ts
++++ b/apps/extension/src/tools/shared.ts
+@@ -93,6 +93,8 @@ export interface CdpRunner {
+   releaseBackgroundExecution?(sessionId: string, tabId: number): Promise<void>;
+   /** Resend this session's owned override, even when the applied-state cache reports it active. */
+   restoreBackgroundExecution?(sessionId: string, tabId: number): Promise<void>;
++  /** Repair an owned zero-sized task viewport without showing its window. */
++  ensureBackgroundViewport?(tabId: number, authorized: () => boolean, signal?: AbortSignal, size?: { width: number; height: number }): Promise<boolean>;
+   trackSessionTab?(sessionId: string, tabId: number): void;
+   releaseSessionTab?(sessionId: string, tabId: number): Promise<void>;
+   onEvent?(handler: (source: CdpDebuggee, method: string, params: unknown) => void): {
 diff --git a/apps/extension/src/tools/snapshot-ref.ts b/apps/extension/src/tools/snapshot-ref.ts
 index 1a82ecf..90fd1e4 100644
 --- a/apps/extension/src/tools/snapshot-ref.ts
@@ -2438,6 +2831,119 @@ index 01e61e3..4b1ed9e 100644
      id: numericId.get(node.id) as number,
      parentId: node.semanticParentId ? (numericId.get(node.semanticParentId) ?? null) : null,
      ...(node.backendNodeId !== undefined ? { backendNodeId: node.backendNodeId } : {}),
+diff --git a/apps/extension/src/tools/window.ts b/apps/extension/src/tools/window.ts
+index cc6f24e..ba0468d 100755
+--- a/apps/extension/src/tools/window.ts
++++ b/apps/extension/src/tools/window.ts
+@@ -7,6 +7,7 @@ import {
+ } from "@/session-manager/manager";
+ import type { RpcError } from "@/transport/types";
+ import type { LayoutMetrics } from "./geometry/frame-context";
++import { prepareTaskViewport } from "./background-viewport";
+ import { validateWindowSize } from "./session";
+ import {
+   type CdpRunner,
+@@ -31,7 +32,7 @@ export interface WindowResizeResult {
+ }
+ 
+ type Size = { width: number; height: number };
+-type WindowBounds = { width?: number; height?: number };
++type WindowBounds = { width?: number; height?: number; state?: string };
+ type Viewport = { size: Size; zoom: number };
+ 
+ // A retry at the same window size cannot prove that a previously stale viewport
+@@ -77,12 +78,13 @@ function size(bounds: WindowBounds): Size | undefined {
+     : undefined;
+ }
+ 
+-async function viewport(cdp: CdpRunner, tabId: number): Promise<Viewport> {
++async function viewport(cdp: CdpRunner, tabId: number): Promise<Viewport | undefined> {
+   const metrics = await cdp.send<LayoutMetrics>(tabId, "Page.getLayoutMetrics", {});
+   const measured = size({
+     width: metrics.cssLayoutViewport?.clientWidth,
+     height: metrics.cssLayoutViewport?.clientHeight,
+   });
++  if (!measured && (metrics.cssLayoutViewport?.clientWidth === 0 || metrics.cssLayoutViewport?.clientHeight === 0)) return undefined;
+   if (!measured) throw new Error("the browser did not return a usable layout viewport");
+   const zoom = metrics.cssVisualViewport?.zoom ?? metrics.visualViewport?.zoom;
+   return {
+@@ -92,11 +94,12 @@ async function viewport(cdp: CdpRunner, tabId: number): Promise<Viewport> {
+ }
+ 
+ function viewportFollowed(
+-  before: Viewport,
++  before: Viewport | undefined,
+   after: Viewport,
+   oldWindow: Size,
+   newWindow: Size,
+ ): boolean {
++  if (!before) return true; // A verified positive viewport proves recovery from zero.
+   // Window bounds use DIP; integer layout dimensions use zoomed CSS pixels.
+   const roundingTolerance = Math.max(2, before.zoom, after.zoom);
+   return (
+@@ -153,7 +156,7 @@ export async function handleWindowResize(
+     };
+ 
+   let beforeWindow: Size;
+-  let beforeViewport: Viewport;
++  let beforeViewport: Viewport | undefined;
+   try {
+     const bounds = size(await deps.windows.get(ctx.agentWindowId));
+     if (!bounds) throw new Error("the browser did not return usable window bounds");
+@@ -174,7 +177,7 @@ export async function handleWindowResize(
+     previousFailure &&
+     sameSize(beforeWindow, requested) &&
+     sameSize(previousFailure.window, beforeWindow) &&
+-    sameSize(previousFailure.viewport, beforeViewport.size)
++    beforeViewport && sameSize(previousFailure.viewport, beforeViewport.size)
+   )
+     return {
+       code: "cdp_failed",
+@@ -195,7 +198,7 @@ export async function handleWindowResize(
+     const resize = () => {
+       // If the browser applies the update but the reply or a later read fails,
+       // a same-size retry must not mistake an unchanged viewport for success.
+-      if (!viewportFollowed(beforeViewport, beforeViewport, beforeWindow, requested)) {
++      if (beforeViewport && !viewportFollowed(beforeViewport, beforeViewport, beforeWindow, requested)) {
+         const tabs = unconfirmed.get(ctx) ?? new Map();
+         tabs.set(target.tabId, { window: requested, viewport: beforeViewport.size });
+         unconfirmed.set(ctx, tabs);
+@@ -249,12 +252,25 @@ export async function handleWindowResize(
+               "Inspect the window and target tab, then synchronize before deciding what to do next.",
+           },
+         };
+-      actualWindow = size(await deps.windows.get(ctx.agentWindowId));
++      const bounds = await deps.windows.get(ctx.agentWindowId);
++      actualWindow = size(bounds);
+       if (!actualWindow) throw new Error("the browser did not return usable window bounds");
+       actualViewport = await viewport(deps.cdp, target.tabId);
++      if (!actualViewport || (bounds.state === "minimized" && !viewportFollowed(beforeViewport, actualViewport, beforeWindow, actualWindow))) {
++        const zoom = beforeViewport?.zoom ?? 1;
++        const insetX = beforeViewport ? Math.max(0, beforeWindow.width - beforeViewport.size.width * zoom) : 0;
++        const insetY = beforeViewport ? Math.max(0, beforeWindow.height - beforeViewport.size.height * zoom) : 0;
++        const repaired = await prepareTaskViewport(manager, ctx, target, deps.cdp, signal, { size: {
++          width: Math.max(100, Math.round((actualWindow.width - insetX) / zoom)),
++          height: Math.max(100, Math.round((actualWindow.height - insetY) / zoom)),
++        } });
++        if (isRpcError(repaired)) return { ...repaired, data: { ...repaired.data, effect_state: "unknown" } };
++        if (repaired) actualViewport = await viewport(deps.cdp, target.tabId);
++      }
+       if (
+         actualWindow.width === requested.width &&
+         actualWindow.height === requested.height &&
++        actualViewport &&
+         viewportFollowed(beforeViewport, actualViewport, beforeWindow, actualWindow)
+       ) {
+         clearUnconfirmed(ctx, target.tabId);
+@@ -311,7 +327,7 @@ export async function handleWindowResize(
+       reason: "window_resize_viewport_unchanged",
+       effect_state: "committed",
+       tab_id: target.tabId,
+-      before_viewport: beforeViewport.size,
++      before_viewport: beforeViewport?.size ?? { width: 0, height: 0 },
+       actual_viewport: actualViewport?.size,
+       actual_window: actualWindow,
+       recovery:
 diff --git a/apps/extension/tsconfig.json b/apps/extension/tsconfig.json
 index 89a886b..54245dc 100644
 --- a/apps/extension/tsconfig.json
@@ -2451,7 +2957,7 @@ index 89a886b..54245dc 100644
      "types": ["chrome"],
      "baseUrl": ".",
 diff --git a/apps/extension/wxt.config.ts b/apps/extension/wxt.config.ts
-index 73b6f4c..8cf6f55 100644
+index 73b6f4c..e7d0413 100644
 --- a/apps/extension/wxt.config.ts
 +++ b/apps/extension/wxt.config.ts
 @@ -33,7 +33,8 @@ export default defineConfig({
@@ -2460,7 +2966,7 @@ index 73b6f4c..8cf6f55 100644
    manifest: {
 -    name: "BrowserSkill",
 +    name: "DeepSeek Harness",
-+    version_name: process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.6",
++    version_name: process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.7",
      description:
        "Let AI agents use your logged-in browser in a separate Agent Window—without interrupting your work. Powered by the bsk CLI.",
      // Flat debugger sessions are required to address out-of-process iframes.
@@ -2485,7 +2991,7 @@ index 73b6f4c..8cf6f55 100644
        },
      ],
      define: {
-+      __DSH_INTEGRATION_VERSION__: JSON.stringify(process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.6"),
++      __DSH_INTEGRATION_VERSION__: JSON.stringify(process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.7"),
 +      __DSH_HARNESS_URL__: JSON.stringify(process.env.BSK_DSH_HTTP_BASE ?? "http://127.0.0.1:3080"),
        __BSK_EXT_BUILD__: JSON.stringify(EXTENSION_BUILD),
        __BSK_EXT_VERSION__: JSON.stringify(EXTENSION_VERSION),

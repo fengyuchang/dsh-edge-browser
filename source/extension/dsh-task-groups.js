@@ -1,6 +1,4 @@
-// Group only tabs created inside BrowserSkill-owned task windows.
-// Borrowed user tabs are left to BrowserSkill's normal return workflow.
-const dshTaskGroups = new Map();
+// Track task windows without leaving persistent browser tab groups behind.
 const dshTaskWindows = new Set();
 const dshMutedTabs = new Set();
 // ponytail: reuse only windows recorded by this worker; after restart, create
@@ -17,11 +15,8 @@ function dshSyncTaskWindows(sessions) {
   for (const id of [...dshTaskWindows]) {
     if (liveWindows.has(id) || dshReservedTaskWindows.has(id)) continue;
     dshTaskWindows.delete(id); dshIdleTaskWindows.add(id); dshReusedWindows.delete(id); dshRetainedIdleTabs.delete(id);
-    const groupId = dshTaskGroups.get(id); dshTaskGroups.delete(id);
     void chrome.tabs.query({ windowId: id }).then(async tabs => {
       if (dshTaskWindows.has(id)) return;
-      const grouped = tabs.filter(tab => tab.groupId === groupId).map(tab => tab.id);
-      if (grouped.length) await chrome.tabs.ungroup(grouped).catch(() => {});
       await Promise.all(tabs.map(dshRestoreTabAudio));
     }).catch(() => {});
   }
@@ -85,25 +80,27 @@ async function dshGroupAgentWindow(window) {
   dshReservedTaskWindows.add(window.id);
   dshTaskWindows.add(window.id);
   await Promise.all((window.tabs || []).map(tab => dshMuteTaskTab({ ...tab, windowId: window.id })));
-  try {
-    const tabIds = (window.tabs || []).map(tab => tab.id).filter(Number.isInteger);
-    if (!tabIds.length) return;
-    // The API otherwise defaults to the current window and moves these tabs.
-    const groupId = await chrome.tabs.group({ tabIds, createProperties: { windowId: window.id } });
-    await chrome.tabGroups.update(groupId, { title: 'DeepSeek Harness', color: 'blue', collapsed: false });
-    dshTaskGroups.set(window.id, groupId);
-  } catch (error) {
-    console.warn('[DSH] Task tab grouping unavailable:', error.message);
+}
+
+async function dshClearLegacyTaskGroups() {
+  // Cosmetic migration of the old exact title/color only. Keep every page;
+  // these restored groups never establish task ownership or window reuse.
+  const groups = await chrome.tabGroups.query({ title: 'DeepSeek Harness', color: 'blue' });
+  for (const group of groups) {
+    const current = await chrome.tabGroups.get(group.id).catch(() => null);
+    if (!current || current.title !== 'DeepSeek Harness' || current.color !== 'blue' || current.windowId !== group.windowId) continue;
+    const tabs = await chrome.tabs.query({ windowId: group.windowId, groupId: group.id });
+    const ids = tabs.filter(tab => tab.groupId === group.id && tab.windowId === group.windowId && Number.isInteger(tab.id)).map(tab => tab.id);
+    if (ids.length) await chrome.tabs.ungroup(ids).catch(() => {});
   }
 }
 
 function dshInstallTaskGroups() {
+const clearLegacy = () => { void dshClearLegacyTaskGroups().catch(error => console.warn('[DSH] Legacy task label cleanup unavailable:', error.message)); };
+clearLegacy();
+chrome.runtime.onStartup?.addListener(clearLegacy);
 chrome.tabs.onCreated.addListener(async tab => {
   await dshMuteTaskTab(tab);
-  const groupId = dshTaskGroups.get(tab.windowId);
-  if (groupId === undefined || !Number.isInteger(tab.id)) return;
-  try { await chrome.tabs.group({ groupId, tabIds: [tab.id] }); }
-  catch (error) { console.warn('[DSH] Task tab grouping failed:', error.message); }
 });
 chrome.tabs.onAttached.addListener(async tabId => {
   try {
@@ -118,11 +115,7 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
 chrome.tabs.onRemoved.addListener(tabId => dshMutedTabs.delete(tabId));
 chrome.windows.onRemoved.addListener(windowId => {
   dshIdleTaskWindows.delete(windowId); dshReservedTaskWindows.delete(windowId); dshResultWindows.delete(windowId); dshReusedWindows.delete(windowId); dshRetainedIdleTabs.delete(windowId);
-  dshTaskGroups.delete(windowId);
   dshTaskWindows.delete(windowId);
-});
-chrome.tabGroups.onRemoved.addListener(group => {
-  if (dshTaskGroups.get(group.windowId) === group.id) dshTaskGroups.delete(group.windowId);
 });
 }
 

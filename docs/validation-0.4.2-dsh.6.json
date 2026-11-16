@@ -52,10 +52,11 @@
         }
       },
       "desktopSamples": 58,
-      "desktopViolations": 0
+      "desktopViolations": 0,
+      "startupWindowSizeArgument": "--window-size=1280,900"
     },
     {
-      "mode": "Headful Edge on inactive Windows desktop, no startup window size",
+      "mode": "Headful Edge on inactive Windows desktop, startup window size explicitly supplied",
       "status": "passed",
       "initialWindowState": "minimized",
       "viewport": {
@@ -92,7 +93,8 @@
         }
       },
       "desktopSamples": 58,
-      "desktopViolations": 0
+      "desktopViolations": 0,
+      "startupWindowSizeArgument": "--window-size=1280,900"
     }
   ],
   "existingControlRegression": {
@@ -107,8 +109,12 @@
     }
   },
   "limitations": [
-    "Natural daily-profile 0x0 viewport was not reproduced. An injected unavailable-metrics response tested the warning and subsequent read recovery.",
+    "A later daily-profile report confirmed actual renderer 0x0 with noFocus. dsh.6 had not fixed that condition; see validation-0.4.2-dsh.7.json.",
     "Headful test used an inactive Windows desktop and fresh profile; it does not prove every daily-profile/window-manager condition.",
     "Cancelling a read ends the caller wait, not the native Chrome command. New captures remain gated until the original command settles or its attachment detaches."
-  ]
+  ],
+  "correction": {
+    "date": "2026-11-16",
+    "issue": "Both background scenarios actually used --window-size=1280,900. The prior headful no-startup-size claim was false; injected metric responses did not force the renderer itself to 0x0."
+  }
 }

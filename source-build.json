@@ -1,17 +1,17 @@
 {
   "upstream": "fbea9e8a191e05971015df13c79b23fc1ceaba14",
-  "version": "0.4.2-dsh.6",
+  "version": "0.4.2-dsh.7",
   "ws": "ws://127.0.0.1:52800",
   "harness": "http://127.0.0.1:3080",
-  "builtAt": "2026-11-15T11:24:18.509Z",
+  "builtAt": "2026-11-16T12:34:43.068Z",
   "inputs": {
-    "source/browser-skill.patch": "e56031146a1089c481824d152392ac5fad2a0f3027068860eae9131035f3f32e",
+    "source/browser-skill.patch": "2a1ac5e02bebddea2e94c2b866975b723738920c023c53ef16030b1de7db8cd9",
     "source/content/dsh-controls.js": "2e4300ae5aaf23e69b9a998de2fb994e12e6b2a64c4b1b8f2b5ef9068564541b",
     "source/content/dsh-pointer.js": "7314b9ad9dcf19d90efde50de953c3805f8cade9fd19e487891b39e195322b6d",
     "source/extension/dsh-annotations.js": "41b0329384f8e3ef48dd863387822f3be63e35780240191488fb4018dfd92566",
     "source/extension/dsh-pointer-relay.js": "6885688759c542012e92add0d79903e9fd40f8d4b059a292609211505725f7c6",
     "source/extension/dsh-task-finish.js": "87a5b25f3d705bcc1cd0daa29c97f2758c833d512d13291d040a1c64f6ca49d7",
-    "source/extension/dsh-task-groups.js": "27e0f9dd7932853f7a3e013f09da60bd267afc179910476f1d8668a6aa2dbf32",
+    "source/extension/dsh-task-groups.js": "52881095bff6110a20e86b53c8ab6448662f2ac55ee4a48d3e46e63ab00368c0",
     "source/extension/dsh-visual-activity.js": "5f4e8ee1f7b65128375b3e2f3b33b8c4a48b7a1415ec26ad2013c6ed68d8c194",
     "source/extension/globals.d.ts": "f75dedcb393fe9860cb7580ce805774ed4cf52bd0368ee7712678f56c45ab6dc",
     "source/upstream.json": "71487736ee5b3c7d69a1442ffb773a3ddf5940bccc99b384ef1bcd616416cc23",
@@ -34,12 +34,12 @@
     "scripts/build-source.mjs": "abac6c22e43459b70134f7894f37ef9409b1e87c1963200e7fb341ad824e2826"
   },
   "outputs": {
-    "extension/background.js": "7621e155169d459324bdd498604cf77f8fae3c667a026308d366974362f5c173",
+    "extension/background.js": "d30de72196cdbf36658f3a63b137347fd5771d1ed84de5589060147da1f728b4",
     "extension/content-scripts/content.js": "688b3f273fcca488dd46a571c3242f76b4a5f6dcfd4dd09c992794d8f4f8ed55",
     "extension/content-scripts/dsh-pointer.js": "7314b9ad9dcf19d90efde50de953c3805f8cade9fd19e487891b39e195322b6d",
     "extension/content-scripts/dsh-controls.js": "2e4300ae5aaf23e69b9a998de2fb994e12e6b2a64c4b1b8f2b5ef9068564541b",
-    "packages/browser-skill-dsh-plugin/lib/index.mjs": "331e94d16c379441c2d9cd15e85328dc62245789960bbbc4032947ecde851abb",
-    "packages/browser-skill-dsh-plugin/lib/client.cjs": "027373737520b65bc18da13a253b7a386a07eeacdd124b1e17b023f0242c70ff",
+    "packages/browser-skill-dsh-plugin/lib/index.mjs": "e6aa99fe1e5d3524afcae217162003076390929c4de63787acb3406aae9e4418",
+    "packages/browser-skill-dsh-plugin/lib/client.cjs": "1cc2cf801c5a48cd9e28a5567f0ef6dfc11d0af70aa9067470577aad28e5d307",
     "packages/browser-skill-dsh-plugin/skill/SKILL.md": "c11e259e1ab2e73827e4d599499c271cbdabead48b582559c50c7045d8223d8d"
   }
 }

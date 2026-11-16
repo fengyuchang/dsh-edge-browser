@@ -129,9 +129,9 @@ window.__ModuleLoader__.load({
 		}
 		var BrowserInspectToolView_module_css_default = {
 			"image-wrap": "TG0CRa_image-wrap",
+			"body": "TG0CRa_body",
 			"summary": "TG0CRa_summary",
 			"card": "TG0CRa_card",
-			"body": "TG0CRa_body",
 			"inspect-button": "TG0CRa_inspect-button"
 		};
 		//#endregion
@@ -146,8 +146,8 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ScreenshotImage_module_css_default = {
-			"thumbnail": "_1Utk2a_thumbnail",
 			"preview": "_1Utk2a_preview",
+			"thumbnail": "_1Utk2a_thumbnail",
 			"status": "_1Utk2a_status",
 			"frame": "_1Utk2a_frame",
 			"retry": "_1Utk2a_retry"
@@ -3947,37 +3947,37 @@ window.__ModuleLoader__.load({
 		}
 		var ObservationOverlay_module_css_default = {
 			"sidebar-tab": "icZHVa_sidebar-tab",
-			"header": "icZHVa_header",
+			"thumb": "icZHVa_thumb",
+			"body": "icZHVa_body",
 			"strip-item": "icZHVa_strip-item",
+			"icon-button": "icZHVa_icon-button",
+			"tool-button": "icZHVa_tool-button",
+			"resize-handle": "icZHVa_resize-handle",
+			"actions": "icZHVa_actions",
+			"tool-wrap": "icZHVa_tool-wrap",
+			"strip-main": "icZHVa_strip-main",
+			"bsk-obs-fade-in": "icZHVa_bsk-obs-fade-in",
+			"header": "icZHVa_header",
+			"actions-group": "icZHVa_actions-group",
+			"strip": "icZHVa_strip",
+			"badge": "icZHVa_badge",
 			"card": "icZHVa_card",
 			"stage": "icZHVa_stage",
-			"capsule": "icZHVa_capsule",
-			"tab-title": "icZHVa_tab-title",
-			"hint": "icZHVa_hint",
-			"floating-notice": "icZHVa_floating-notice",
-			"actions-group": "icZHVa_actions-group",
-			"brand-icon": "icZHVa_brand-icon",
 			"pin-badge": "icZHVa_pin-badge",
-			"body": "icZHVa_body",
-			"resize-handle": "icZHVa_resize-handle",
-			"tool-wrap": "icZHVa_tool-wrap",
-			"strip-id": "icZHVa_strip-id",
-			"strip": "icZHVa_strip",
-			"actions": "icZHVa_actions",
-			"strip-interrupt": "icZHVa_strip-interrupt",
-			"strip-main": "icZHVa_strip-main",
 			"placeholder": "icZHVa_placeholder",
-			"bsk-obs-fade-in": "icZHVa_bsk-obs-fade-in",
-			"tool-button": "icZHVa_tool-button",
-			"tool-stop-armed": "icZHVa_tool-stop-armed",
-			"strip-thumb-empty": "icZHVa_strip-thumb-empty",
-			"thumb": "icZHVa_thumb",
-			"badge": "icZHVa_badge",
-			"tool-stop": "icZHVa_tool-stop",
 			"tool-danger": "icZHVa_tool-danger",
-			"icon-button": "icZHVa_icon-button",
+			"tool-stop": "icZHVa_tool-stop",
+			"hint": "icZHVa_hint",
+			"strip-id": "icZHVa_strip-id",
 			"strip-thumb": "icZHVa_strip-thumb",
-			"status-text": "icZHVa_status-text"
+			"brand-icon": "icZHVa_brand-icon",
+			"tab-title": "icZHVa_tab-title",
+			"floating-notice": "icZHVa_floating-notice",
+			"tool-stop-armed": "icZHVa_tool-stop-armed",
+			"capsule": "icZHVa_capsule",
+			"strip-interrupt": "icZHVa_strip-interrupt",
+			"status-text": "icZHVa_status-text",
+			"strip-thumb-empty": "icZHVa_strip-thumb-empty"
 		};
 		//#endregion
 		//#region src/client/observation-view.ts
