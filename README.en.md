@@ -4,7 +4,7 @@ Visible, background control of your everyday Edge browser for DeepSeek Harness.
 
 [中文](README.md) · [Downloads](https://github.com/fengyuchang/dsh-edge-browser/releases/latest) · [Project site](https://fengyuchang.github.io/dsh-edge-browser/)
 
-**Latest: 0.4.2-dsh.10, 2026-11-17.** Successful screenshot paths stay readable alongside inline images. Semantic actions and batch accept the tested `.8–.10` extension range. Long-idle thumbnails stop renewing daemon activity; list/capacity checks reconcile confirmed missing tasks. Finish receipts distinguish requested retention from native protection. See [changes and validation](docs/delivery-0.4.2-dsh.10.md) and the [blank-tab fixes](docs/blank-tabs-0.4.2-dsh.9.md).
+**Latest: 0.4.2-dsh.11, 2026-11-18.** Ordered asynchronous status updates keep slow visual acknowledgements off the action path. Batch steps can wait for an observed result. Coordinated peers return confirmed closed, retained, failed and unknown page outcomes; older compatible extensions explicitly lack that receipt. The hidden supervisor logs and retries transient IPC failures. See [changes and validation](docs/flow-0.4.2-dsh.11.md) and [screenshot delivery and idle handling](docs/delivery-0.4.2-dsh.10.md).
 
 Built on Tencent BrowserSkill 0.4.2. This community customization reuses the
 browser's signed-in sessions, controls task tabs without moving the system mouse,

@@ -1,6 +1,7 @@
 // Observe validated native operations. Visual failures never change their result.
 const dshVisualStates = new Map();
 const dshPointerPositions = new Map();
+const visualQueues = new Map();
 const dshVisualActions = {
   click: '点击目标', hover: '移动指针', drag: '拖动目标', cooperate: '同步页面', fill: '填写输入框', press: '按键操作',
   select: '选择选项', focus: '定位输入框', blur: '离开输入框',
@@ -29,6 +30,23 @@ async function dshSendVisual(tabId, message, current = () => true) {
   } catch {} // Restricted pages must still receive the original native operation.
 }
 
+// Keep one pending update per tab; slow content scripts never hold native input.
+function enqueueVisual(tabId, state) {
+  let queue = visualQueues.get(tabId);
+  if (!queue) visualQueues.set(tabId, queue = { pending: undefined, running: false });
+  queue.pending = { state, message: { type: 'dsh-visual-activity', ...state } };
+  if (queue.running) return;
+  queue.running = true;
+  void (async () => {
+    try {
+      while (queue.pending) {
+        const { state, message } = queue.pending; queue.pending = undefined;
+        await dshSendVisual(tabId, message, () => dshVisualStates.get(tabId) === state && state.phase === message.phase);
+      }
+    } finally { if (visualQueues.get(tabId) === queue) visualQueues.delete(tabId); }
+  })().catch(() => {});
+}
+
 async function dshVisualOperation(dispatcher, request, operation) {
   const action = request.method?.replace(/^tool\./, '');
   const label = dshVisualActions[action];
@@ -44,7 +62,7 @@ async function dshVisualOperation(dispatcher, request, operation) {
   if (!tab || tab.windowId !== session?.agentWindowId) return operation();
   const state = { id: request.id, sessionId: request.params.session_id, action, label, phase: 'running' };
   dshVisualStates.set(tab.id, state);
-  await dshSendVisual(tab.id, { type: 'dsh-visual-activity', ...state });
+  enqueueVisual(tab.id, state);
   try {
     const result = await operation();
     state.phase = result && typeof result.code === 'string' && typeof result.message === 'string' ? 'error' : 'complete';
@@ -52,7 +70,7 @@ async function dshVisualOperation(dispatcher, request, operation) {
   } catch (error) {
     state.phase = 'error'; throw error;
   } finally {
-    if (dshVisualStates.get(tab.id) === state) await dshSendVisual(tab.id, { type: 'dsh-visual-activity', ...state });
+    if (dshVisualStates.get(tab.id) === state) enqueueVisual(tab.id, state);
   }
 }
 

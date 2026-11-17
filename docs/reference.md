@@ -23,3 +23,7 @@
 ## agent-browser 的模型操作与诊断设计
 
 0.4.2-dsh.5 参考 [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) 的语义定位、小批量调用、按需观察与版本一致性思路。使用官方 0.43.0 Windows 二进制进行独立后台对照，未向日常 Harness 安装第二套浏览器后端；没有复制其 Rust、MCP 或桌面实现。保留原生 DSH 会话归属、合作控制、标注与页面收尾。[本轮说明](automation-0.4.2-dsh.5.md)。
+
+## ego-lite 的执行与收尾设计
+
+0.4.2-dsh.11 研究 [citrolabs/ego-lite](https://github.com/citrolabs/ego-lite) 的公开 SDK，固定提交 `f499162d1b911ba9b320ed31b741dba7ebc2e4d6`。参考多步执行、明确等待、实际收尾清单和分场景延迟测试的设计；本轮实现继续使用 BrowserSkill 原生后端。其 SDK 对应独立浏览器运行时，未安装、迁移或复制其浏览器内核，也未复制其实现代码。公开 SDK 为 MIT；官方性能宣传未在本轮复现。局部快照与站点经验仍是后续方向。[本轮实施与验证](flow-0.4.2-dsh.11.md)。

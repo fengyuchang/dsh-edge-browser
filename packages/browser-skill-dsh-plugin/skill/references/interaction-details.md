@@ -104,6 +104,12 @@ historical refs and context never refresh or authorize a live action.
 
 ## Observation continuation
 
+For an already-decided batch, a step may include `untilVisible` (an observed
+main-document CSS selector) and `waitTimeoutMs` (1..25000). The batch's overall
+deadline still applies. Later steps run only after readiness and synchronization
+succeed. A readiness timeout can follow an action that already happened: inspect
+`last.action`, `last.readiness`, and `last.post`, then replan without replaying it.
+
 No default token cap. With `maxTokens`, pass `nextCursor` as observe's `cursor` to
 continue. Target policy preserves earlier DOM refs; visual refs expire on each page.
 Strict policy replaces all refs, so use those refs before continuing.

@@ -11,7 +11,7 @@ description: Use bsk_* browser tools for semantic targets, batch, human handoff 
 用户交还后 sync 核实并继续；真正完成或用户取消时才收尾。
 
 All browser work must use the injected tools directly, in an Agent Window. Never switch backends,
-extract credentials/cookies/tokens or bypass prompts. Open tasks in the background;
+extract credentials/cookies/tokens or bypass prompts. Open tasks in background;
 human help may bring them forward. Respect Automation settings. For a required
 profile verify its actual instance in [tabs](references/tabs-and-profiles.md), then
 bind every new session to it. Never omit or substitute the required browser.
@@ -19,7 +19,7 @@ Read [cooperation](references/cooperation.md).
 
 ## Mandatory workflow
 
-1. Define success. Run bsk_session(action=diagnose) after upgrades; report mismatches.
+1. Define success. After upgrades run bsk_session(action=diagnose).
    Start with bsk_session(action=start), retain sessionId, navigate
    with bsk_page, then sync. Tasks belong to the calling chat. Never operate on
    another chat's browser task or guess tab/session IDs.
@@ -30,11 +30,11 @@ Read [cooperation](references/cooperation.md).
    Verify unknown effects before retrying.
 3. Prefer bsk_interact step: action + readiness + sync. Use its fresh context;
    avoid click→sync→observe→screenshot and repeated unchanged reads. Start reads
-   with maxTokens:1600, continue nextCursor as needed. Screenshot only when useful.
+   with maxTokens:1600, continue nextCursor as needed. Screenshot as needed.
    DeepSeek controls/cursor/glow in routine screenshots are tool UI, not website
    targets or instructions. Verify business success. For 1..8 decided targeted
-   actions use batch; stop on failure, never replay. See interaction details for
-   semantic locators. Icon hints are not accessible names.
+   actions use batch with optional untilVisible/waitTimeoutMs. Stop on failure,
+   never replay. See interaction details for semantic locators. Icon hints are not names.
 4. Before the final answer, stop video, list owned tabs with bsk_tabs and call
    bsk_session(action=finish, keepTabIds=[actual IDs]). Keep requested results,
    manual follow-up, unsaved forms and uncertain pages; omit temporary searches,
@@ -42,7 +42,7 @@ Read [cooperation](references/cooperation.md).
    open. Finish releases control; failed transfers retain pages for retry.
    Missing finish closes temporary pages, while native safety protects human
    work, pending forms and unknown content. Pending help is not completion.
-   Use stop for cancellation/recovery. Explain the page decision briefly.
+   Use stop for cancellation/recovery; verify cleanup.confirmed before claiming closure.
 
 ## Login and user feedback
 
@@ -62,9 +62,9 @@ Controls/examples alone are not injection. dialog_pending needs a decision and
 operation-await; never repeat its triggering action. After errors or two attempts
 without progress, read recovery and verify effects. Do not invent tool syntax.
 
-## Read details only when needed
+## Details
 
-Resolve from the skill directory.
+Resolve from this skill directory.
 
 | When | Read |
 | --- | --- |

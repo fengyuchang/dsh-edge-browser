@@ -1,5 +1,7 @@
 import { randomBytes } from 'node:crypto';
 
+export { trusted as trustedBrowserExtensionRequest };
+
 const BASE = '/bsk-observation/annotations';
 const MAX_BODY = 6 * 1024 * 1024;
 const TTL = 10 * 60 * 1000;

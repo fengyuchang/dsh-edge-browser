@@ -5,6 +5,46 @@ import { dshRestoreTabAudio, dshRememberResultWindow } from './dsh-task-groups.j
 // Borrowed user tabs always follow upstream's original-window return path.
 const dshKeptTaskTabs = new WeakMap();
 
+function dshWithCleanupReceipt(manager, params, operation) {
+  const session = manager.get(params?.session_id);
+  if (!session || typeof chrome === 'undefined' || !/^[a-p]{32}$/.test(chrome.runtime?.id ?? '')) return operation();
+  return (async () => {
+  const post = async body => {
+    const response = await fetch(__DSH_HARNESS_URL__ + '/bsk-observation/task-cleanup', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-dsh-browser-extension': chrome.runtime.id },
+      body: JSON.stringify({ sessionId: session.sessionId, ...body }), signal: AbortSignal.timeout(500),
+    });
+    if (!response.ok) return undefined;
+    return response.json();
+  };
+  const ticket = await post({ action: 'begin' }).catch(() => undefined);
+  if (!ticket?.token || !ticket.requestId || !Array.isArray(ticket.tabIds) || ticket.tabIds.length > 512 || ticket.tabIds.some(id => !Number.isSafeInteger(id) || id <= 0) || new Set(ticket.tabIds).size !== ticket.tabIds.length || !Array.isArray(ticket.keepIds) || ticket.keepIds.some(id => !ticket.tabIds.includes(id))) return operation();
+  // Only inspect IDs from this session, including pages explicitly returned by
+  // the invoking finish. The authenticated peer supplies no page content.
+  const borrowed = new Set(session.borrowedTabs.keys()), observed = new Set(session.observedTabs ?? []), created = new Set(session.agentCreatedTabs);
+  try { return await operation(); }
+  finally {
+    try {
+      const entries = await Promise.all(ticket.tabIds.map(async tabId => {
+        try {
+          await chrome.tabs.get(tabId);
+          const reason = ticket.keepIds.includes(tabId) ? 'requested' : borrowed.has(tabId) ? 'borrowed' : observed.has(tabId) ? 'human_or_user' : !created.has(tabId) ? 'previous_result_or_user' : !session.agentCreatedTabs.has(tabId) ? 'form_or_uncertain_content' : 'cleanup_failed';
+          return { tabId, state: reason === 'cleanup_failed' ? 'failed' : 'retained', reason };
+        } catch (error) {
+          return /No tab with id|Invalid tab ID/i.test(String(error?.message))
+            ? { tabId, state: 'closed', reason: 'tab_absent' }
+            : { tabId, state: 'unknown', reason: 'query_failed' };
+        }
+      }));
+      let windowState = 'unknown';
+      try { await chrome.windows.get(session.agentWindowId); windowState = 'retained'; }
+      catch (error) { if (/No window with id|Invalid window ID/i.test(String(error?.message))) windowState = 'closed'; }
+      await post({ action: 'complete', token: ticket.token, requestId: ticket.requestId, entries, windowState, controlReleased: manager.get(session.sessionId) !== session });
+    } catch {} // Evidence failure never changes the real stop result or error.
+  }
+  })();
+}
+
 // Runs only at task cleanup. Return a boolean, never field values or secrets.
 function dshPageNeedsPreserving() {
   if (document.readyState === 'loading') return true;
@@ -109,4 +149,4 @@ async function dshKeepTaskTab(session, params, options, overlay) {
   }
 }
 
-export { dshKeepTaskTab, dshProtectTaskForms, dshPageNeedsPreserving };
+export { dshKeepTaskTab, dshProtectTaskForms, dshPageNeedsPreserving, dshWithCleanupReceipt };

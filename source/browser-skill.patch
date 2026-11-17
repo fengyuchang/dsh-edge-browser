@@ -1407,7 +1407,7 @@ index 639874c..9daf5a8 100644
            sendToTarget: (_target, method, params) => instrumented(method, params),
            getAttachmentId: () => sessionId,
 diff --git a/apps/extension/src/debug/capabilities.ts b/apps/extension/src/debug/capabilities.ts
-index aa0f904..7f2f9c1 100644
+index aa0f904..b38baca 100644
 --- a/apps/extension/src/debug/capabilities.ts
 +++ b/apps/extension/src/debug/capabilities.ts
 @@ -3,6 +3,7 @@ import { JOURNAL_BYTES, JOURNAL_PINS, JOURNAL_REQUESTS } from "./journal";
@@ -1418,11 +1418,13 @@ index aa0f904..7f2f9c1 100644
  export const DEBUG_ACTIONS = [
    "performance",
    "aggregate",
-@@ -53,6 +54,7 @@ export function debugCapabilities(persistent = true): Record<string, unknown> {
+@@ -53,6 +54,9 @@ export function debugCapabilities(persistent = true): Record<string, unknown> {
    return {
      schema_version: 1,
      extension: {
 +      integration_version: typeof __DSH_INTEGRATION_VERSION__ === "string" ? __DSH_INTEGRATION_VERSION__ : "unknown",
++      runtime_id: typeof chrome !== "undefined" ? chrome.runtime?.id : undefined,
++      features: { dsh_cleanup_receipt: 1, dsh_async_visual: 1 },
        version: typeof __BSK_EXT_VERSION__ === "string" ? __BSK_EXT_VERSION__ : "unknown",
        build: typeof __BSK_EXT_BUILD__ === "string" ? __BSK_EXT_BUILD__ : "unknown",
      },
@@ -2495,7 +2497,7 @@ index 0040a16..9abb72a 100644
      }
      if (retired || deps.signal?.aborted) return cancelled();
 diff --git a/apps/extension/src/tools/dispatcher.ts b/apps/extension/src/tools/dispatcher.ts
-index 4f134b9..0f046d5 100644
+index 4f134b9..1a97f84 100644
 --- a/apps/extension/src/tools/dispatcher.ts
 +++ b/apps/extension/src/tools/dispatcher.ts
 @@ -1,8 +1,11 @@
@@ -2506,7 +2508,7 @@ index 4f134b9..0f046d5 100644
  import type { DebugParams } from "@/debug/types";
  import type { InteractionPreferenceStore } from "@/lib/interaction-preferences";
  import { OVERLAY_AUTOMATION_BYPASS } from "@/lib/overlay-bridge";
-+import { dshProtectTaskForms } from "@/dsh/dsh-task-finish.js";
++import { dshProtectTaskForms, dshWithCleanupReceipt } from "@/dsh/dsh-task-finish.js";
  import { ScreenshotExports } from "@/long-screenshot/exports";
  import {
    isAgentControlledTab,
@@ -2529,15 +2531,25 @@ index 4f134b9..0f046d5 100644
      switch (req.method) {
        case "tool.video":
          if (!this.video)
-@@ -830,6 +845,7 @@ export class ToolDispatcher {
+@@ -829,7 +844,8 @@ export class ToolDispatcher {
+         this.debug?.releaseSession((req.params as SessionStopParams).session_id);
          await this.screenshotExports.releaseSession((req.params as SessionStopParams).session_id);
          await this.releaseHoverLatch((req.params as SessionStopParams).session_id);
-         const result = await handleSessionStop(this.sessions, req.params as SessionStopParams, {
+-        const result = await handleSessionStop(this.sessions, req.params as SessionStopParams, {
++        const stop = () => handleSessionStop(this.sessions, req.params as SessionStopParams, {
 +          beforeClose: typeof chrome !== "undefined" && chrome.runtime?.id ? dshProtectTaskForms : undefined,
            cdp,
            // Must be wired whenever the extension runtime is available: the
            // agent-tab cleanup and window-release decision (issue #57) read
-@@ -915,15 +931,18 @@ export class ToolDispatcher {
+@@ -841,6 +857,7 @@ export class ToolDispatcher {
+             : { tabManagement: { tabs: chromeTabMutationApi }, tabsQuery: chromeTabsApi }),
+           signal,
+         });
++        const result = await dshWithCleanupReceipt(this.sessions, req.params as SessionStopParams, stop);
+         const stoppedSession = (req.params as SessionStopParams).session_id;
+         if (!this.sessions.has(stoppedSession)) this.cooperation?.release(stoppedSession);
+         return result;
+@@ -915,15 +932,18 @@ export class ToolDispatcher {
          return this.screenshotExports.read(req.params as ScreenshotReadParams);
        case "tool.screenshot_release":
          return this.screenshotExports.release(req.params as ScreenshotReleaseParams);
@@ -3207,7 +3219,7 @@ index 89a886b..54245dc 100644
      "types": ["chrome"],
      "baseUrl": ".",
 diff --git a/apps/extension/wxt.config.ts b/apps/extension/wxt.config.ts
-index 73b6f4c..91f324b 100644
+index 73b6f4c..a79ae12 100644
 --- a/apps/extension/wxt.config.ts
 +++ b/apps/extension/wxt.config.ts
 @@ -33,7 +33,8 @@ export default defineConfig({
@@ -3216,7 +3228,7 @@ index 73b6f4c..91f324b 100644
    manifest: {
 -    name: "BrowserSkill",
 +    name: "DeepSeek Harness",
-+    version_name: process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.10",
++    version_name: process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.11",
      description:
        "Let AI agents use your logged-in browser in a separate Agent Window—without interrupting your work. Powered by the bsk CLI.",
      // Flat debugger sessions are required to address out-of-process iframes.
@@ -3241,13 +3253,13 @@ index 73b6f4c..91f324b 100644
        },
      ],
      define: {
-+      __DSH_INTEGRATION_VERSION__: JSON.stringify(process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.10"),
++      __DSH_INTEGRATION_VERSION__: JSON.stringify(process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.11"),
 +      __DSH_HARNESS_URL__: JSON.stringify(process.env.BSK_DSH_HTTP_BASE ?? "http://127.0.0.1:3080"),
        __BSK_EXT_BUILD__: JSON.stringify(EXTENSION_BUILD),
        __BSK_EXT_VERSION__: JSON.stringify(EXTENSION_VERSION),
        __BSK_DAEMON_WS_URL__: JSON.stringify(
 diff --git a/packages/dsh-plugin-browserskill/skill/SKILL.md b/packages/dsh-plugin-browserskill/skill/SKILL.md
-index b94545e..1bbc089 100644
+index b94545e..0b4d619 100644
 --- a/packages/dsh-plugin-browserskill/skill/SKILL.md
 +++ b/packages/dsh-plugin-browserskill/skill/SKILL.md
 @@ -1,84 +1,77 @@
@@ -3279,7 +3291,7 @@ index b94545e..1bbc089 100644
 -never change them or switch backends to bypass a prompt.
 -For remote setup/pairing, follow the [remote guide](https://github.com/Tencent/BrowserSkill/blob/main/docs/remote-extension-connection.md).
 +All browser work must use the injected tools directly, in an Agent Window. Never switch backends,
-+extract credentials/cookies/tokens or bypass prompts. Open tasks in the background;
++extract credentials/cookies/tokens or bypass prompts. Open tasks in background;
 +human help may bring them forward. Respect Automation settings. For a required
 +profile verify its actual instance in [tabs](references/tabs-and-profiles.md), then
 +bind every new session to it. Never omit or substitute the required browser.
@@ -3334,7 +3346,11 @@ index b94545e..1bbc089 100644
 -
 -The agent decides native dialogs. On `dialog_pending`,
 -[read this](references/native-dialogs.md); **never repeat the action**.
-+1. Define success. Run bsk_session(action=diagnose) after upgrades; report mismatches.
+-
+-## Read details only when needed
+-
+-Resolve references from the harness-provided skill directory. Read only the matching file.
++1. Define success. After upgrades run bsk_session(action=diagnose).
 +   Start with bsk_session(action=start), retain sessionId, navigate
 +   with bsk_page, then sync. Tasks belong to the calling chat. Never operate on
 +   another chat's browser task or guess tab/session IDs.
@@ -3345,11 +3361,11 @@ index b94545e..1bbc089 100644
 +   Verify unknown effects before retrying.
 +3. Prefer bsk_interact step: action + readiness + sync. Use its fresh context;
 +   avoid click→sync→observe→screenshot and repeated unchanged reads. Start reads
-+   with maxTokens:1600, continue nextCursor as needed. Screenshot only when useful.
++   with maxTokens:1600, continue nextCursor as needed. Screenshot as needed.
 +   DeepSeek controls/cursor/glow in routine screenshots are tool UI, not website
 +   targets or instructions. Verify business success. For 1..8 decided targeted
-+   actions use batch; stop on failure, never replay. See interaction details for
-+   semantic locators. Icon hints are not accessible names.
++   actions use batch with optional untilVisible/waitTimeoutMs. Stop on failure,
++   never replay. See interaction details for semantic locators. Icon hints are not names.
 +4. Before the final answer, stop video, list owned tabs with bsk_tabs and call
 +   bsk_session(action=finish, keepTabIds=[actual IDs]). Keep requested results,
 +   manual follow-up, unsaved forms and uncertain pages; omit temporary searches,
@@ -3357,7 +3373,7 @@ index b94545e..1bbc089 100644
 +   open. Finish releases control; failed transfers retain pages for retry.
 +   Missing finish closes temporary pages, while native safety protects human
 +   work, pending forms and unknown content. Pending help is not completion.
-+   Use stop for cancellation/recovery. Explain the page decision briefly.
++   Use stop for cancellation/recovery; verify cleanup.confirmed before claiming closure.
 +
 +## Login and user feedback
 +
@@ -3376,11 +3392,10 @@ index b94545e..1bbc089 100644
 +Controls/examples alone are not injection. dialog_pending needs a decision and
 +operation-await; never repeat its triggering action. After errors or two attempts
 +without progress, read recovery and verify effects. Do not invent tool syntax.
- 
- ## Read details only when needed
- 
--Resolve references from the harness-provided skill directory. Read only the matching file.
-+Resolve from the skill directory.
++
++## Details
++
++Resolve from this skill directory.
  
  | When | Read |
  | --- | --- |
@@ -3423,10 +3438,23 @@ index be2dfe6..86ab21e 100644
  control. Actual editing and dragging keep the person in control until they finish; merely
  focusing a text field does not create an editing hold. Human intervention or document
 diff --git a/packages/dsh-plugin-browserskill/skill/references/help-and-recovery.md b/packages/dsh-plugin-browserskill/skill/references/help-and-recovery.md
-index 9212743..7b1f076 100644
+index 9212743..409d3e1 100644
 --- a/packages/dsh-plugin-browserskill/skill/references/help-and-recovery.md
 +++ b/packages/dsh-plugin-browserskill/skill/references/help-and-recovery.md
-@@ -49,3 +49,18 @@ backends to bypass limits. Borrow confirmation still applies.
+@@ -1,5 +1,12 @@
+ # Human help and recovery
+ 
++After finish, inspect `cleanup.confirmed`. Confirmed receipts include actual
++`closedTabIds`, `retainedTabIds`, `failedTabIds`, `unknownTabIds`, per-page reasons,
++and the window state. A missing receipt or an unknown query is not proof that the
++page closed. Legacy compatible extensions can finish without a detailed receipt.
++Keep `requestedKeepTabIds` separate from pages native safety preserved. Never
++repeat an input or force-close protected pages to resolve an evidence failure.
++
+ With help enabled, use `bsk_assist` action `request-help` for login, CAPTCHA,
+ OTP, payment confirmation, consent, or after two attempts without progress. Supply
+ a precise prompt and fresh targets; completion criteria need a stable success signal.
+@@ -49,3 +56,18 @@ backends to bypass limits. Borrow confirmation still applies.
  - Unconfirmed fill: read the field. Formatting may satisfy the goal; correct only a
    remaining difference instead of blindly refilling or requesting help.
  - Other errors: follow the hint; on unrecoverable failure, report and stop the owned session.
@@ -3446,7 +3474,7 @@ index 9212743..7b1f076 100644
 +- 取消结束读取等待后，Chrome 仍可能持有旧命令。迟到回执不授权继续动作；原命令未结束前的读取拒绝是保护。待它结束后重新同步；一直无响应时仅回收自己的任务。不要重放不确定的点击或提交。
 +- 后台截图超时不等于视口归零；核对新观察中的尺寸和页面。`Viewport capture timed out while ...` 会说明准备渲染、抓取像素或身份核验阶段。没有旧读取在途、页面仍相同时，仅重试截图一次；持续失败则说明图像不可用，暂停依赖视觉的步骤，可独立完成的 DOM 读取继续。不要自动激活窗口或重放之前的点击/提交。
 diff --git a/packages/dsh-plugin-browserskill/skill/references/interaction-details.md b/packages/dsh-plugin-browserskill/skill/references/interaction-details.md
-index 986825e..67139fd 100644
+index 986825e..9cbcd3b 100644
 --- a/packages/dsh-plugin-browserskill/skill/references/interaction-details.md
 +++ b/packages/dsh-plugin-browserskill/skill/references/interaction-details.md
 @@ -14,7 +14,36 @@ not fetch HTML just to replace a usable ref with a selector. A known
@@ -3487,6 +3515,19 @@ index 986825e..67139fd 100644
  
  States are `visible` (default), `hidden` (absent or not visible), `attached`, and
  `detached` (absent). Visibility does not guarantee enabled state or actionability.
+@@ -75,6 +104,12 @@ historical refs and context never refresh or authorize a live action.
+ 
+ ## Observation continuation
+ 
++For an already-decided batch, a step may include `untilVisible` (an observed
++main-document CSS selector) and `waitTimeoutMs` (1..25000). The batch's overall
++deadline still applies. Later steps run only after readiness and synchronization
++succeed. A readiness timeout can follow an action that already happened: inspect
++`last.action`, `last.readiness`, and `last.post`, then replan without replaying it.
++
+ No default token cap. With `maxTokens`, pass `nextCursor` as observe's `cursor` to
+ continue. Target policy preserves earlier DOM refs; visual refs expire on each page.
+ Strict policy replaces all refs, so use those refs before continuing.
 diff --git a/packages/dsh-plugin-browserskill/skill/references/screenshots-and-canvas.md b/packages/dsh-plugin-browserskill/skill/references/screenshots-and-canvas.md
 index f87cfca..1a42663 100644
 --- a/packages/dsh-plugin-browserskill/skill/references/screenshots-and-canvas.md
@@ -3679,10 +3720,10 @@ index 8694793..9be22af 100644
      ctx.slots.register(
 diff --git a/packages/dsh-plugin-browserskill/src/dsh-operations.ts b/packages/dsh-plugin-browserskill/src/dsh-operations.ts
 new file mode 100644
-index 0000000..6920c62
+index 0000000..7c1bb83
 --- /dev/null
 +++ b/packages/dsh-plugin-browserskill/src/dsh-operations.ts
-@@ -0,0 +1,160 @@
+@@ -0,0 +1,165 @@
 +import { readFile } from "node:fs/promises";
 +import { defineTool, type ToolDefinition, type ToolRunContext } from "@deepseek-ai/dsh-tools";
 +import { DSH_BUILD_VERSION } from "./dsh-build-info";
@@ -3743,6 +3784,8 @@ index 0000000..6920c62
 +      value: { type: "string" }, key: { type: "string" },
 +      values: { type: "array", items: { type: "string" } },
 +      deltaX: { type: "number" }, deltaY: { type: "number" },
++      untilVisible: { type: "string", description: "Observed main-document CSS selector expected after this action. No action is replayed if readiness times out." },
++      waitTimeoutMs: { type: "integer", description: "Readiness budget 1..25000 ms; requires untilVisible. The whole batch deadline still applies." },
 +      expect: EXPECT_PARAM,
 +    } },
 +  },
@@ -3762,7 +3805,7 @@ index 0000000..6920c62
 +      if (!exec.observationContext) throw new Error("batch requires the actual contextId from sync");
 +      const budget = args.timeoutMs ?? 30_000;
 +      if (!Number.isSafeInteger(budget) || budget < 1000 || budget > 60_000) throw new Error("batch timeoutMs must be in 1000..60000");
-+      const allowed = new Set(["action", "target", "value", "key", "values", "deltaX", "deltaY", "expect"]);
++      const allowed = new Set(["action", "target", "value", "key", "values", "deltaX", "deltaY", "expect", "untilVisible", "waitTimeoutMs"]);
 +      for (const row of steps) {
 +        if (!row || typeof row !== "object" || Array.isArray(row) || Object.keys(row).some(key => !allowed.has(key))) throw new Error("batch step contains unsupported fields");
 +        if (!(ACTIONS as readonly string[]).includes(row.action) || typeof row.target !== "string" || !row.target.trim() || row.target.length > 2048) throw new Error("batch requires supported targeted actions");
@@ -3771,6 +3814,8 @@ index 0000000..6920c62
 +        if (row.action === "select" && (!Array.isArray(row.values) || !row.values.length || row.values.some(value => typeof value !== "string"))) throw new Error("batch select requires values");
 +        for (const key of ["deltaX", "deltaY"] as const) if (row[key] !== undefined && !Number.isFinite(row[key])) throw new Error("batch wheel deltas must be finite");
 +        if (row.action === "wheel" && !(row.deltaX || row.deltaY)) throw new Error("batch wheel requires a nonzero delta");
++        if (row.untilVisible !== undefined && (typeof row.untilVisible !== "string" || !row.untilVisible.trim() || row.untilVisible.length > 2048)) throw new Error("batch untilVisible requires a bounded CSS selector");
++        if (row.waitTimeoutMs !== undefined && (row.untilVisible === undefined || !Number.isSafeInteger(row.waitTimeoutMs) || row.waitTimeoutMs < 1 || row.waitTimeoutMs > 25_000)) throw new Error("batch waitTimeoutMs requires untilVisible and must be in 1..25000");
 +        validateExpectations(row.expect);
 +      }
 +      const session = deps.registry.resolve(args.session, "batch"), controller = new AbortController();
@@ -3791,7 +3836,7 @@ index 0000000..6920c62
 +            if (row.deltaX !== undefined) params.delta_x = row.deltaX;
 +            if (row.deltaY !== undefined) params.delta_y = row.deltaY;
 +            inFlight = true;
-+            const result = await step.execute({ session, ...(args.tabId === undefined ? {} : { tabId: args.tabId }), stepAction: row.action, params: JSON.stringify(params) }, {
++            const result = await step.execute({ session, ...(args.tabId === undefined ? {} : { tabId: args.tabId }), stepAction: row.action, params: JSON.stringify(params), ...(row.untilVisible === undefined ? {} : { untilVisible: row.untilVisible }), ...(row.waitTimeoutMs === undefined ? {} : { waitTimeoutMs: row.waitTimeoutMs }) }, {
 +              ...exec, signal, [DSH_BATCH_QUEUE]: session, [DSH_BATCH_RECEIPT]: true, observationContext: context, observationId: observation,
 +              actionExpectations: row.expect ?? exec.actionExpectations,
 +            } as BatchContext) as { ok?: boolean; post?: { context_id?: string; observation_id?: string } };
@@ -3834,7 +3879,8 @@ index 0000000..6920c62
 +        try {
 +          const caps = await deps.queue.run(session, () => run(["debug", "capabilities", "--session", session]), exec.signal) as { capabilities?: { extension?: { integration_version?: string } } };
 +          const version = caps.capabilities?.extension?.integration_version;
-+          checks.extension = { integrationVersion: version ?? "not_reported", runtimeMatchesPlugin: version === DSH_BUILD_VERSION, compatibleForInput: compatibleAdvancedRevision(version), updateRecommended: version !== DSH_BUILD_VERSION };
++          const features = (caps.capabilities?.extension as { features?: Record<string, unknown> } | undefined)?.features;
++          checks.extension = { integrationVersion: version ?? "not_reported", runtimeMatchesPlugin: version === DSH_BUILD_VERSION, compatibleForInput: compatibleAdvancedRevision(version), updateRecommended: version !== DSH_BUILD_VERSION, features: { cleanupReceipt: features?.dsh_cleanup_receipt === 1, asyncVisual: features?.dsh_async_visual === 1 } };
 +        } catch { checks.extension = { reason: "active_session_capabilities_unavailable" }; }
 +      }
 +      exec.signal.throwIfAborted();
@@ -3867,7 +3913,7 @@ index f9b8607..64cb6b5 100644
        finalizeContent: stepReceipt.finalizeContent,
        presentCall: (args) => ({
 diff --git a/packages/dsh-plugin-browserskill/src/index.ts b/packages/dsh-plugin-browserskill/src/index.ts
-index dcd9504..9076267 100644
+index dcd9504..a933cc9 100644
 --- a/packages/dsh-plugin-browserskill/src/index.ts
 +++ b/packages/dsh-plugin-browserskill/src/index.ts
 @@ -11,6 +11,11 @@
@@ -3876,7 +3922,7 @@ index dcd9504..9076267 100644
  import type { Context } from "@deepseek-ai/cordis";
 +import { createUserMessage } from "@deepseek-ai/dsh-llm";
 +import { registerAnnotationRoutes } from "./dsh-annotations.mjs";
-+import { armTaskCompletion } from "./dsh-task-finish.mjs";
++import { armTaskCompletion, registerTaskCleanupRoutes } from "./dsh-task-finish.mjs";
 +import { parseBskJson } from "./runner";
 +import { createPreviewTransport } from "./dsh-preview.mjs";
  import Schema from "@deepseek-ai/schemastery";
@@ -3896,14 +3942,15 @@ index dcd9504..9076267 100644
    const registry = new SessionRegistry(resolved.maxSessions);
    const queue = new KeyedExecutor();
    const observation = new ObservationService({
-@@ -145,12 +157,15 @@ export function apply(
+@@ -145,12 +157,16 @@ export function apply(
    // AFTER this plugin loads, and in headless compositions it never appears (the
    // callback simply never runs, leaving the rest of the plugin unaffected).
    ctx.inject(["webServer"], (injected) => {
 -    return registerObservationRoutes(injected, observation, starts);
 +    const dispose = registerObservationRoutes(injected, observation, starts);
 +    const annotations = registerAnnotationRoutes(injected, registry, createUserMessage);
-+    return () => { annotations(); dispose(); };
++    const cleanup = registerTaskCleanupRoutes(injected, deps);
++    return () => { cleanup(); annotations(); dispose(); };
    });
    // Reap a conversation's browsers when the conversation itself is archived:
    // archived sessions are hidden from every surface, so their Agent Windows
@@ -4375,10 +4422,10 @@ index 7d8e8eb..b7c4ebe 100644
      ]);
 diff --git a/packages/dsh-plugin-browserskill/tests/dsh-batch.test.ts b/packages/dsh-plugin-browserskill/tests/dsh-batch.test.ts
 new file mode 100644
-index 0000000..e31f61e
+index 0000000..69f9089
 --- /dev/null
 +++ b/packages/dsh-plugin-browserskill/tests/dsh-batch.test.ts
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,75 @@
 +import { DSH_BUILD_VERSION } from "../src/dsh-build-info";
 +import { afterEach, describe, expect, it, vi } from "vitest";
 +import { createStepRuntime, STEP_SUCCESS, STEP_PARTIAL, stepReply } from "./helpers/step-runtime";
@@ -4432,6 +4479,18 @@ index 0000000..e31f61e
 +  it("validates the whole sequence before input, including ownership overrides", async () => {
 +    const run = vi.fn(async () => stepReply(STEP_SUCCESS, 0)),runtime = await host(run);
 +    const result = await runtime.execute(undefined, { action: "batch", contextId: "ctx-before", steps: [steps[0], { ...steps[1], session: "s2" }] });
++    expect(result.isError).toBe(true);expect(run).not.toHaveBeenCalled();
++  });
++  it("keeps readiness inside its original step and advances only after successful wait", async () => {
++    const run = vi.fn(async (_args: string[]) => stepReply(STEP_SUCCESS, 0)),runtime = await host(run);
++    const result = await runtime.execute(undefined, { action: "batch", contextId: "ctx-before", steps: [{ ...steps[1], untilVisible: "#new-panel", waitTimeoutMs: 1200 }, steps[2]] });
++    expect(result.isError).not.toBe(true);expect(run).toHaveBeenCalledTimes(2);
++    expect(run.mock.calls[0][0]).toEqual(expect.arrayContaining(["--until-visible", "#new-panel", "--wait-timeout-ms", "1200"]));
++    expect(run.mock.calls[1][0]).not.toContain("--until-visible");
++  });
++  it.each([{ waitTimeoutMs: 10 }, { untilVisible: "" }, { untilVisible: "#new", waitTimeoutMs: 25001 }, { untilVisible: "#new", waitTimeoutMs: 1.5 }])("rejects invalid readiness before any action: %o", async readiness => {
++    const run = vi.fn(async () => stepReply(STEP_SUCCESS, 0)),runtime = await host(run);
++    const result = await runtime.execute(undefined, { action: "batch", contextId: "ctx-before", steps: [steps[0], { ...steps[1], ...readiness }] });
 +    expect(result.isError).toBe(true);expect(run).not.toHaveBeenCalled();
 +  });
 +  it("cancels an in-flight child without running later steps or replaying it", async () => {

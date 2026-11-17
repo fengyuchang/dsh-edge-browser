@@ -44,6 +44,7 @@ vm.runInContext(classic(read('source/extension/dsh-visual-activity.js'))+'\ndshI
 pointer.request={id:'test',method:'tool.fill',params:{session_id:'ours',value:'DO-NOT-COPY'}};
 pointer.dispatcher={sessions:{get:()=>({agentWindowId:4})}};pointer.operation=async()=>({native:true});
 await vm.runInContext('dshVisualOperation(dispatcher,request,operation)',pointer);assert(!JSON.stringify(pointerMessages).includes('DO-NOT-COPY'));
+await new Promise(resolve=>setImmediate(resolve)); // Prior cosmetic updates finish independently of the action.
 const before=pointerMessages.length;pointer.request.params.tab_id=99;await vm.runInContext('dshVisualOperation(dispatcher,request,operation)',pointer);assert.equal(pointerMessages.length,before);
 blockVisual=true;await Promise.race([vm.runInContext("dshCdpCommand({tabId:7},'Input.dispatchMouseEvent',{type:'mousePressed',x:20,y:30})",pointer),new Promise((_,reject)=>setTimeout(()=>reject(new Error('Cosmetic message blocked native input')),200))]);
 assert.equal(nativeCommands.at(-1).params.type,'mousePressed');blockVisual=false;detach({tabId:7});await new Promise(r=>setTimeout(r,80));

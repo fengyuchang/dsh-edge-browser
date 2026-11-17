@@ -1,6 +1,6 @@
 {
   "name": "dsh-edge-browser",
-  "version": "0.4.2-dsh.10",
+  "version": "0.4.2-dsh.11",
   "private": true,
   "packageManager": "pnpm@10.17.0",
   "type": "module",
@@ -10,7 +10,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node verify.mjs && node annotation-check.mjs && node annotation-client-check.mjs && node notice-check.mjs && node task-finish-check.mjs && node window-pool-check.mjs && node preview-check.mjs && node scripts/check-source.mjs",
+    "test": "node verify.mjs && node annotation-check.mjs && node annotation-client-check.mjs && node notice-check.mjs && node task-finish-check.mjs && node cleanup-receipt-check.mjs && node visual-activity-check.mjs && node service-recovery-check.mjs && node window-pool-check.mjs && node preview-check.mjs && node scripts/check-source.mjs",
     "build:source": "node scripts/build-source.mjs",
     "test:browser": "node annotation-ui-check.mjs",
     "build:release": "node scripts/build-release.mjs"

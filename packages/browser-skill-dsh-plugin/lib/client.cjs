@@ -128,11 +128,11 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var BrowserInspectToolView_module_css_default = {
-			"card": "TG0CRa_card",
 			"summary": "TG0CRa_summary",
 			"image-wrap": "TG0CRa_image-wrap",
 			"inspect-button": "TG0CRa_inspect-button",
-			"body": "TG0CRa_body"
+			"body": "TG0CRa_body",
+			"card": "TG0CRa_card"
 		};
 		//#endregion
 		//#region \0bsk-css:D:\dsh-browserskill-recovery\packages\dsh-plugin-browserskill\src\client\ScreenshotImage.module.css.mjs
@@ -147,10 +147,10 @@ window.__ModuleLoader__.load({
 		}
 		var ScreenshotImage_module_css_default = {
 			"preview": "_1Utk2a_preview",
-			"status": "_1Utk2a_status",
-			"frame": "_1Utk2a_frame",
 			"thumbnail": "_1Utk2a_thumbnail",
-			"retry": "_1Utk2a_retry"
+			"retry": "_1Utk2a_retry",
+			"frame": "_1Utk2a_frame",
+			"status": "_1Utk2a_status"
 		};
 		//#endregion
 		//#region src/client/ScreenshotImage.tsx
@@ -3946,37 +3946,37 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ObservationOverlay_module_css_default = {
-			"brand-icon": "icZHVa_brand-icon",
-			"pin-badge": "icZHVa_pin-badge",
-			"strip-interrupt": "icZHVa_strip-interrupt",
-			"status-text": "icZHVa_status-text",
-			"hint": "icZHVa_hint",
-			"body": "icZHVa_body",
-			"tool-stop": "icZHVa_tool-stop",
-			"floating-notice": "icZHVa_floating-notice",
-			"tool-wrap": "icZHVa_tool-wrap",
-			"bsk-obs-fade-in": "icZHVa_bsk-obs-fade-in",
-			"strip-main": "icZHVa_strip-main",
-			"tab-title": "icZHVa_tab-title",
 			"strip-thumb": "icZHVa_strip-thumb",
-			"actions": "icZHVa_actions",
-			"tool-stop-armed": "icZHVa_tool-stop-armed",
-			"capsule": "icZHVa_capsule",
-			"tool-button": "icZHVa_tool-button",
-			"sidebar-tab": "icZHVa_sidebar-tab",
-			"thumb": "icZHVa_thumb",
-			"stage": "icZHVa_stage",
-			"placeholder": "icZHVa_placeholder",
-			"resize-handle": "icZHVa_resize-handle",
-			"strip": "icZHVa_strip",
-			"strip-thumb-empty": "icZHVa_strip-thumb-empty",
-			"icon-button": "icZHVa_icon-button",
-			"strip-item": "icZHVa_strip-item",
-			"strip-id": "icZHVa_strip-id",
-			"card": "icZHVa_card",
-			"badge": "icZHVa_badge",
 			"header": "icZHVa_header",
+			"tab-title": "icZHVa_tab-title",
+			"bsk-obs-fade-in": "icZHVa_bsk-obs-fade-in",
+			"tool-stop": "icZHVa_tool-stop",
 			"actions-group": "icZHVa_actions-group",
+			"capsule": "icZHVa_capsule",
+			"actions": "icZHVa_actions",
+			"thumb": "icZHVa_thumb",
+			"floating-notice": "icZHVa_floating-notice",
+			"status-text": "icZHVa_status-text",
+			"tool-button": "icZHVa_tool-button",
+			"tool-stop-armed": "icZHVa_tool-stop-armed",
+			"strip-item": "icZHVa_strip-item",
+			"pin-badge": "icZHVa_pin-badge",
+			"hint": "icZHVa_hint",
+			"resize-handle": "icZHVa_resize-handle",
+			"tool-wrap": "icZHVa_tool-wrap",
+			"card": "icZHVa_card",
+			"stage": "icZHVa_stage",
+			"strip-interrupt": "icZHVa_strip-interrupt",
+			"strip-id": "icZHVa_strip-id",
+			"brand-icon": "icZHVa_brand-icon",
+			"icon-button": "icZHVa_icon-button",
+			"badge": "icZHVa_badge",
+			"strip-thumb-empty": "icZHVa_strip-thumb-empty",
+			"sidebar-tab": "icZHVa_sidebar-tab",
+			"placeholder": "icZHVa_placeholder",
+			"body": "icZHVa_body",
+			"strip": "icZHVa_strip",
+			"strip-main": "icZHVa_strip-main",
 			"tool-danger": "icZHVa_tool-danger"
 		};
 		//#endregion

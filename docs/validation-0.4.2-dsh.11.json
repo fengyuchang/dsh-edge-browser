@@ -1,0 +1,573 @@
+{
+  "version": "0.4.2-dsh.11",
+  "date": "2026-11-18",
+  "status": "passed-with-documented-limits",
+  "tests": {
+    "extensionPassed": 3740,
+    "nativePassed": 743,
+    "skipped": 435,
+    "typechecks": "both passed",
+    "rootChecks": "passed; new checks cover visual queue, HTTP receipt boundaries and real hidden Windows supervisor recovery"
+  },
+  "scope": "Isolated Edge profiles and daemon; synthetic page/account-free fixtures; real browser PNG with local structural image-attachment receiver. No real chat messages.",
+  "baseline": {
+    "native": "0.4.2-dsh.10",
+    "extension": "0.4.2-dsh.10",
+    "mode": "baseline-headless",
+    "benchmarks": [
+      {
+        "visualAckDelayMs": 0,
+        "p50": 235,
+        "p95": 261,
+        "samples": [
+          226,
+          229,
+          229,
+          231,
+          235,
+          235,
+          239,
+          246,
+          247,
+          261
+        ],
+        "cliCommands": 12,
+        "warmups": 2,
+        "samplesCount": 10
+      },
+      {
+        "visualAckDelayMs": 40,
+        "p50": 273,
+        "p95": 377,
+        "samples": [
+          268,
+          270,
+          271,
+          271,
+          273,
+          273,
+          275,
+          277,
+          287,
+          377
+        ],
+        "cliCommands": 12,
+        "warmups": 2,
+        "samplesCount": 10
+      }
+    ],
+    "inlineReadiness": {
+      "logicalCalls": 2,
+      "cliCommands": 2
+    }
+  },
+  "live": {
+    "checks": 67,
+    "cases": [
+      {
+        "mode": "previous-headless",
+        "native": "0.4.2-dsh.11",
+        "extension": "0.4.2-dsh.10",
+        "checks": [
+          "Native/extension versions match the intended compatibility pair; window stays minimized",
+          "Inline attachment and readable delivered file contain the same real PNG bytes",
+          "Legacy extension cleanup remains usable and explicitly reports missing detailed evidence",
+          "finish keep[] actually closes a plain disposable task tab",
+          "Same-page native click samples verify all 24 DOM effects, including delayed visual acknowledgements",
+          "Readiness gates the next decided action and verifies the eventual DOM result",
+          "Readiness timeout preserves the one real input and prevents later actions or replay",
+          "Native form protection retains a prefilled form despite an empty requested keep list",
+          "Finish receipt explicitly separates requested pages from additional native safety retention",
+          "Physical-input fixture survives cleanup with its unsent draft intact",
+          "Tested patch pair completes semantic fill and button click through native batch with verified DOM effects",
+          "Cancellation during inline saving publishes no file result and deletes the temporary PNG",
+          "Idle preview switches to metadata without renewing the real daemon session",
+          "List reconciles a daemon-reaped task out of native capacity without stopping other sessions",
+          "No private task remains after verification"
+        ],
+        "diagnostics": {
+          "integrationVersion": "0.4.2-dsh.10",
+          "runtimeMatchesPlugin": false,
+          "compatibleForInput": true,
+          "updateRecommended": true,
+          "features": {
+            "cleanupReceipt": false,
+            "asyncVisual": false
+          }
+        },
+        "benchmarks": [
+          {
+            "visualAckDelayMs": 0,
+            "p50": 261,
+            "p95": 338,
+            "samples": [
+              244,
+              250,
+              251,
+              252,
+              255,
+              267,
+              271,
+              279,
+              284,
+              338
+            ],
+            "cliCommands": 12,
+            "warmups": 2,
+            "samplesCount": 10
+          },
+          {
+            "visualAckDelayMs": 40,
+            "p50": 282,
+            "p95": 294,
+            "samples": [
+              273,
+              274,
+              277,
+              278,
+              280,
+              283,
+              284,
+              285,
+              291,
+              294
+            ],
+            "cliCommands": 12,
+            "warmups": 2,
+            "samplesCount": 10
+          }
+        ],
+        "inlineReadiness": {
+          "logicalCalls": 1,
+          "cliCommands": 3,
+          "commands": [
+            "debug",
+            "step",
+            "step"
+          ]
+        },
+        "receipts": {
+          "plainFinish": {
+            "confirmed": false,
+            "reason": "extension_receipt_unavailable"
+          },
+          "formFinish": {
+            "confirmed": false,
+            "reason": "extension_receipt_unavailable"
+          },
+          "humanFinish": {
+            "confirmed": false,
+            "reason": "extension_receipt_unavailable"
+          }
+        }
+      },
+      {
+        "mode": "legacy-headless",
+        "native": "0.4.2-dsh.11",
+        "extension": "0.4.2-dsh.8",
+        "checks": [
+          "Native/extension versions match the intended compatibility pair; window stays minimized",
+          "Inline attachment and readable delivered file contain the same real PNG bytes",
+          "Legacy extension cleanup remains usable and explicitly reports missing detailed evidence",
+          "finish keep[] actually closes a plain disposable task tab",
+          "Same-page native click samples verify all 24 DOM effects, including delayed visual acknowledgements",
+          "Readiness gates the next decided action and verifies the eventual DOM result",
+          "Readiness timeout preserves the one real input and prevents later actions or replay",
+          "Native form protection retains a prefilled form despite an empty requested keep list",
+          "Finish receipt explicitly separates requested pages from additional native safety retention",
+          "Physical-input fixture survives cleanup with its unsent draft intact",
+          "Tested patch pair completes semantic fill and button click through native batch with verified DOM effects",
+          "Cancellation during inline saving publishes no file result and deletes the temporary PNG",
+          "Idle preview switches to metadata without renewing the real daemon session",
+          "List reconciles a daemon-reaped task out of native capacity without stopping other sessions",
+          "No private task remains after verification"
+        ],
+        "diagnostics": {
+          "integrationVersion": "0.4.2-dsh.8",
+          "runtimeMatchesPlugin": false,
+          "compatibleForInput": true,
+          "updateRecommended": true,
+          "features": {
+            "cleanupReceipt": false,
+            "asyncVisual": false
+          }
+        },
+        "benchmarks": [
+          {
+            "visualAckDelayMs": 0,
+            "p50": 252,
+            "p95": 440,
+            "samples": [
+              238,
+              242,
+              243,
+              246,
+              251,
+              252,
+              291,
+              294,
+              305,
+              440
+            ],
+            "cliCommands": 12,
+            "warmups": 2,
+            "samplesCount": 10
+          },
+          {
+            "visualAckDelayMs": 40,
+            "p50": 283,
+            "p95": 305,
+            "samples": [
+              275,
+              277,
+              278,
+              279,
+              280,
+              286,
+              287,
+              295,
+              296,
+              305
+            ],
+            "cliCommands": 12,
+            "warmups": 2,
+            "samplesCount": 10
+          }
+        ],
+        "inlineReadiness": {
+          "logicalCalls": 1,
+          "cliCommands": 3,
+          "commands": [
+            "debug",
+            "step",
+            "step"
+          ]
+        },
+        "receipts": {
+          "plainFinish": {
+            "confirmed": false,
+            "reason": "extension_receipt_unavailable"
+          },
+          "formFinish": {
+            "confirmed": false,
+            "reason": "extension_receipt_unavailable"
+          },
+          "humanFinish": {
+            "confirmed": false,
+            "reason": "extension_receipt_unavailable"
+          }
+        }
+      },
+      {
+        "mode": "aligned-headed",
+        "native": "0.4.2-dsh.11",
+        "extension": "0.4.2-dsh.11",
+        "checks": [
+          "Native/extension versions match the intended compatibility pair; window stays minimized",
+          "Inline attachment and readable delivered file contain the same real PNG bytes",
+          "Real native/extension HTTP receipt confirms the disposable tab closed",
+          "finish keep[] actually closes a plain disposable task tab",
+          "Same-page native click samples verify all DOM effects, including delayed visual acknowledgements",
+          "Readiness gates the next decided action and verifies the eventual DOM result",
+          "Readiness timeout preserves the one real input and prevents later actions or replay",
+          "Real cleanup receipt identifies retained form state",
+          "Native form protection retains a prefilled form despite an empty requested keep list",
+          "Finish receipt explicitly separates requested pages from additional native safety retention",
+          "Requested result stays open after return and is explicitly accounted for in the real receipt",
+          "Real cleanup receipt identifies a protected human-input page",
+          "Physical-input fixture survives cleanup with its unsent draft intact",
+          "Tested patch pair completes semantic fill and button click through native batch with verified DOM effects",
+          "Cancellation during inline saving publishes no file result and deletes the temporary PNG",
+          "Idle preview switches to metadata without renewing the real daemon session",
+          "List reconciles a daemon-reaped task out of native capacity without stopping other sessions",
+          "Separate ordinary private window and its original tab remain untouched",
+          "No private task remains after verification"
+        ],
+        "diagnostics": {
+          "integrationVersion": "0.4.2-dsh.11",
+          "runtimeMatchesPlugin": true,
+          "compatibleForInput": true,
+          "updateRecommended": false,
+          "features": {
+            "cleanupReceipt": true,
+            "asyncVisual": true
+          }
+        },
+        "benchmarks": [
+          {
+            "visualAckDelayMs": 0,
+            "p50": 3016,
+            "p95": 3018,
+            "samples": [
+              3010,
+              3016,
+              3018
+            ],
+            "cliCommands": 4,
+            "warmups": 1,
+            "samplesCount": 3
+          },
+          {
+            "visualAckDelayMs": 40,
+            "p50": 3005,
+            "p95": 3023,
+            "samples": [
+              3005,
+              3005,
+              3023
+            ],
+            "cliCommands": 4,
+            "warmups": 1,
+            "samplesCount": 3
+          }
+        ],
+        "inlineReadiness": {
+          "logicalCalls": 1,
+          "cliCommands": 3,
+          "commands": [
+            "debug",
+            "step",
+            "step"
+          ]
+        },
+        "receipts": {
+          "plainFinish": {
+            "confirmed": true,
+            "counts": {
+              "closed": 1,
+              "retained": 0,
+              "failed": 0,
+              "unknown": 0
+            },
+            "windowState": "closed",
+            "reasons": [
+              "tab_absent"
+            ]
+          },
+          "formFinish": {
+            "confirmed": true,
+            "counts": {
+              "closed": 0,
+              "retained": 1,
+              "failed": 0,
+              "unknown": 0
+            },
+            "windowState": "retained",
+            "reasons": [
+              "form_or_uncertain_content"
+            ]
+          },
+          "requestedFinish": {
+            "confirmed": true,
+            "counts": {
+              "closed": 0,
+              "retained": 2,
+              "failed": 0,
+              "unknown": 0
+            },
+            "windowState": "retained",
+            "reasons": [
+              "previous_result_or_user",
+              "requested"
+            ]
+          },
+          "humanFinish": {
+            "confirmed": true,
+            "counts": {
+              "closed": 0,
+              "retained": 2,
+              "failed": 0,
+              "unknown": 0
+            },
+            "windowState": "retained",
+            "reasons": [
+              "previous_result_or_user",
+              "human_or_user"
+            ]
+          }
+        }
+      },
+      {
+        "mode": "aligned-headless",
+        "native": "0.4.2-dsh.11",
+        "extension": "0.4.2-dsh.11",
+        "checks": [
+          "Native/extension versions match the intended compatibility pair; window stays minimized",
+          "Inline attachment and readable delivered file contain the same real PNG bytes",
+          "Real native/extension HTTP receipt confirms the disposable tab closed",
+          "finish keep[] actually closes a plain disposable task tab",
+          "Same-page native click samples verify all DOM effects, including delayed visual acknowledgements",
+          "Readiness gates the next decided action and verifies the eventual DOM result",
+          "Readiness timeout preserves the one real input and prevents later actions or replay",
+          "Real cleanup receipt identifies retained form state",
+          "Native form protection retains a prefilled form despite an empty requested keep list",
+          "Finish receipt explicitly separates requested pages from additional native safety retention",
+          "Requested result stays open after return and is explicitly accounted for in the real receipt",
+          "Real cleanup receipt identifies a protected human-input page",
+          "Physical-input fixture survives cleanup with its unsent draft intact",
+          "Tested patch pair completes semantic fill and button click through native batch with verified DOM effects",
+          "Cancellation during inline saving publishes no file result and deletes the temporary PNG",
+          "Idle preview switches to metadata without renewing the real daemon session",
+          "List reconciles a daemon-reaped task out of native capacity without stopping other sessions",
+          "No private task remains after verification"
+        ],
+        "diagnostics": {
+          "integrationVersion": "0.4.2-dsh.11",
+          "runtimeMatchesPlugin": true,
+          "compatibleForInput": true,
+          "updateRecommended": false,
+          "features": {
+            "cleanupReceipt": true,
+            "asyncVisual": true
+          }
+        },
+        "benchmarks": [
+          {
+            "visualAckDelayMs": 0,
+            "p50": 256,
+            "p95": 390,
+            "samples": [
+              246,
+              247,
+              250,
+              251,
+              254,
+              257,
+              258,
+              270,
+              288,
+              390
+            ],
+            "cliCommands": 12,
+            "warmups": 2,
+            "samplesCount": 10
+          },
+          {
+            "visualAckDelayMs": 40,
+            "p50": 239,
+            "p95": 249,
+            "samples": [
+              232,
+              236,
+              238,
+              239,
+              239,
+              239,
+              242,
+              246,
+              247,
+              249
+            ],
+            "cliCommands": 12,
+            "warmups": 2,
+            "samplesCount": 10
+          }
+        ],
+        "inlineReadiness": {
+          "logicalCalls": 1,
+          "cliCommands": 3,
+          "commands": [
+            "debug",
+            "step",
+            "step"
+          ]
+        },
+        "receipts": {
+          "plainFinish": {
+            "confirmed": true,
+            "counts": {
+              "closed": 1,
+              "retained": 0,
+              "failed": 0,
+              "unknown": 0
+            },
+            "windowState": "closed",
+            "reasons": [
+              "tab_absent"
+            ]
+          },
+          "formFinish": {
+            "confirmed": true,
+            "counts": {
+              "closed": 0,
+              "retained": 1,
+              "failed": 0,
+              "unknown": 0
+            },
+            "windowState": "retained",
+            "reasons": [
+              "form_or_uncertain_content"
+            ]
+          },
+          "requestedFinish": {
+            "confirmed": true,
+            "counts": {
+              "closed": 0,
+              "retained": 2,
+              "failed": 0,
+              "unknown": 0
+            },
+            "windowState": "retained",
+            "reasons": [
+              "previous_result_or_user",
+              "requested"
+            ]
+          },
+          "humanFinish": {
+            "confirmed": true,
+            "counts": {
+              "closed": 0,
+              "retained": 2,
+              "failed": 0,
+              "unknown": 0
+            },
+            "windowState": "retained",
+            "reasons": [
+              "previous_result_or_user",
+              "human_or_user"
+            ]
+          }
+        }
+      }
+    ],
+    "desktopSamples": 476,
+    "monitors": [
+      {
+        "mode": "previous-headless",
+        "samples": 95,
+        "violations": 0
+      },
+      {
+        "mode": "legacy-headless",
+        "samples": 94,
+        "violations": 0
+      },
+      {
+        "mode": "aligned-headed",
+        "samples": 191,
+        "violations": 0
+      },
+      {
+        "mode": "aligned-headless",
+        "samples": 96,
+        "violations": 0
+      }
+    ]
+  },
+  "coldStartDiagnostic": {
+    "condition": "No ordinary browser window in a browser on an inactive Windows desktop",
+    "result": "Window metadata unexpectedly restored to normal/focused after a minimized create/update; strict startup assertion failed. Recorded separately, not counted as a passing case or a fixed issue.",
+    "traceCompleted": true,
+    "defaultDesktopViolations": 0
+  },
+  "limits": [
+    "Headless samples use ten timed steps after two warmups per condition; headed samples use three timed steps after one warmup. Synthetic 40ms delays apply only to visual message acknowledgements.",
+    "Normal headless timings do not establish a universal click speed improvement. Report slow-ack results separately from normal operation, model inference and external websites.",
+    "The first batch includes a compatibility check; its one model tool call can still issue three CLI commands for two steps. Every step retains native validation and synchronization.",
+    "Headed input on the inactive Windows desktop retains native input acknowledgement and renderer frame readiness waits. Those safety checks were not removed to improve measurements.",
+    "The passing headed scenario includes an independent ordinary browser window and verifies it remains untouched. The separate no-window cold-start anomaly needs additional investigation.",
+    "Idle preview uses a five-minute service-clock advance and a real daemon with two-second idle setting; normal default ten-minute timing was not waited out.",
+    "Older tested extensions remain input-compatible but cannot provide new asynchronous status or detailed cleanup receipts.",
+    "Two external DeepSeek Flash review attempts returned empty final content at their output limit; neither is counted as a successful review. Validation here comes from source audit and local tests."
+  ]
+}

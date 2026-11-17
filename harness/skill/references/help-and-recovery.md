@@ -1,5 +1,12 @@
 # Human help and recovery
 
+After finish, inspect `cleanup.confirmed`. Confirmed receipts include actual
+`closedTabIds`, `retainedTabIds`, `failedTabIds`, `unknownTabIds`, per-page reasons,
+and the window state. A missing receipt or an unknown query is not proof that the
+page closed. Legacy compatible extensions can finish without a detailed receipt.
+Keep `requestedKeepTabIds` separate from pages native safety preserved. Never
+repeat an input or force-close protected pages to resolve an evidence failure.
+
 With help enabled, use `bsk_assist` action `request-help` for login, CAPTCHA,
 OTP, payment confirmation, consent, or after two attempts without progress. Supply
 a precise prompt and fresh targets; completion criteria need a stable success signal.
