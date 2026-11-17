@@ -1,0 +1,178 @@
+{
+  "version": "0.4.2-dsh.10",
+  "date": "2026-11-17",
+  "status": "passed",
+  "tests": {
+    "extensionPassed": 3740,
+    "nativePassed": 738,
+    "skipped": 435,
+    "typechecks": "both passed"
+  },
+  "scope": "Isolated Edge profiles, independent daemon and synthetic owners; image attachment seam is a local structural fixture receiving real browser PNG bytes",
+  "baseline": {
+    "native": "0.4.2-dsh.9",
+    "extension": "0.4.2-dsh.8",
+    "inlinePathDeleted": true,
+    "plainFinishActuallyClosed": true,
+    "prefilledFormProtected": true,
+    "humanDraftProtected": true,
+    "advancedInputRejected": true,
+    "passivePreviewRequests": 20,
+    "idleIntervalSeconds": 2,
+    "sessionSurvivedIdleInterval": true
+  },
+  "live": {
+    "checks": 44,
+    "cases": [
+      {
+        "mode": "mixed-headless",
+        "native": "0.4.2-dsh.10",
+        "extension": "0.4.2-dsh.8",
+        "checks": [
+          "Native/extension versions match the intended compatibility pair; window stays minimized",
+          "Inline attachment and readable delivered file contain the same real PNG bytes",
+          "finish keep[] actually closes a plain disposable task tab",
+          "Native form protection retains a prefilled form despite an empty requested keep list",
+          "Finish receipt explicitly separates requested pages from additional native safety retention",
+          "Physical-input fixture survives cleanup with its unsent draft intact",
+          "Tested patch pair completes semantic fill and button click through native batch with verified DOM effects",
+          "Cancellation during inline saving publishes no file result and deletes the temporary PNG",
+          "Idle preview switches to metadata without renewing the real daemon session",
+          "List reconciles a daemon-reaped task out of native capacity without stopping other sessions",
+          "No private task remains after verification"
+        ],
+        "compatibility": {
+          "integrationVersion": "0.4.2-dsh.8",
+          "runtimeMatchesPlugin": false,
+          "compatibleForInput": true,
+          "updateRecommended": true
+        },
+        "screenshot": {
+          "inlineImage": true,
+          "pathExistsAfterReturn": true,
+          "bytes": 34492,
+          "sha256": "36f362404d9bde539e688140db412271c75c862f38f0aefd8a7c943add7cf2aa"
+        },
+        "idle": {
+          "previewRequests": 0,
+          "daemonSessionReaped": true,
+          "clockNote": "Preview-service clock advanced5m; real daemon configured2s for bounded verification"
+        }
+      },
+      {
+        "mode": "previous-headless",
+        "native": "0.4.2-dsh.10",
+        "extension": "0.4.2-dsh.9",
+        "checks": [
+          "Native/extension versions match the intended compatibility pair; window stays minimized",
+          "Inline attachment and readable delivered file contain the same real PNG bytes",
+          "finish keep[] actually closes a plain disposable task tab",
+          "Native form protection retains a prefilled form despite an empty requested keep list",
+          "Finish receipt explicitly separates requested pages from additional native safety retention",
+          "Physical-input fixture survives cleanup with its unsent draft intact",
+          "Tested patch pair completes semantic fill and button click through native batch with verified DOM effects",
+          "Cancellation during inline saving publishes no file result and deletes the temporary PNG",
+          "Idle preview switches to metadata without renewing the real daemon session",
+          "List reconciles a daemon-reaped task out of native capacity without stopping other sessions",
+          "No private task remains after verification"
+        ],
+        "compatibility": {
+          "integrationVersion": "0.4.2-dsh.9",
+          "runtimeMatchesPlugin": false,
+          "compatibleForInput": true,
+          "updateRecommended": true
+        },
+        "screenshot": {
+          "inlineImage": true,
+          "pathExistsAfterReturn": true,
+          "bytes": 34072,
+          "sha256": "879ccd4e24d750e0262bcd8306de9c0c1829386d889c6051142194f1b30f9e51"
+        },
+        "idle": {
+          "previewRequests": 0,
+          "daemonSessionReaped": true,
+          "clockNote": "Preview-service clock advanced5m; real daemon configured2s for bounded verification"
+        }
+      },
+      {
+        "mode": "aligned-headless",
+        "native": "0.4.2-dsh.10",
+        "extension": "0.4.2-dsh.10",
+        "checks": [
+          "Native/extension versions match the intended compatibility pair; window stays minimized",
+          "Inline attachment and readable delivered file contain the same real PNG bytes",
+          "finish keep[] actually closes a plain disposable task tab",
+          "Native form protection retains a prefilled form despite an empty requested keep list",
+          "Finish receipt explicitly separates requested pages from additional native safety retention",
+          "Physical-input fixture survives cleanup with its unsent draft intact",
+          "Tested patch pair completes semantic fill and button click through native batch with verified DOM effects",
+          "Cancellation during inline saving publishes no file result and deletes the temporary PNG",
+          "Idle preview switches to metadata without renewing the real daemon session",
+          "List reconciles a daemon-reaped task out of native capacity without stopping other sessions",
+          "No private task remains after verification"
+        ],
+        "compatibility": {
+          "integrationVersion": "0.4.2-dsh.10",
+          "runtimeMatchesPlugin": true,
+          "compatibleForInput": true,
+          "updateRecommended": false
+        },
+        "screenshot": {
+          "inlineImage": true,
+          "pathExistsAfterReturn": true,
+          "bytes": 34389,
+          "sha256": "6625e0d78ced0f9dd6a685d4609c1c892e1521b8bb17d87fbd17b0d64d46c986"
+        },
+        "idle": {
+          "previewRequests": 0,
+          "daemonSessionReaped": true,
+          "clockNote": "Preview-service clock advanced5m; real daemon configured2s for bounded verification"
+        }
+      },
+      {
+        "mode": "aligned-headed",
+        "native": "0.4.2-dsh.10",
+        "extension": "0.4.2-dsh.10",
+        "checks": [
+          "Native/extension versions match the intended compatibility pair; window stays minimized",
+          "Inline attachment and readable delivered file contain the same real PNG bytes",
+          "finish keep[] actually closes a plain disposable task tab",
+          "Native form protection retains a prefilled form despite an empty requested keep list",
+          "Finish receipt explicitly separates requested pages from additional native safety retention",
+          "Physical-input fixture survives cleanup with its unsent draft intact",
+          "Tested patch pair completes semantic fill and button click through native batch with verified DOM effects",
+          "Cancellation during inline saving publishes no file result and deletes the temporary PNG",
+          "Idle preview switches to metadata without renewing the real daemon session",
+          "List reconciles a daemon-reaped task out of native capacity without stopping other sessions",
+          "No private task remains after verification"
+        ],
+        "compatibility": {
+          "integrationVersion": "0.4.2-dsh.10",
+          "runtimeMatchesPlugin": true,
+          "compatibleForInput": true,
+          "updateRecommended": false
+        },
+        "screenshot": {
+          "inlineImage": true,
+          "pathExistsAfterReturn": true,
+          "bytes": 58830,
+          "sha256": "f875dbdce0d63a6780f193d1e06db649860b8fae66a839a61cd20c4725b2e560"
+        },
+        "idle": {
+          "previewRequests": 0,
+          "daemonSessionReaped": true,
+          "clockNote": "Preview-service clock advanced5m; real daemon configured2s for bounded verification"
+        }
+      }
+    ],
+    "desktopSamples": 205,
+    "observedHelperWindowOrForegroundViolations": 0
+  },
+  "limits": [
+    "Five-minute preview inactivity is crossed with a controllable service clock; the actual isolated daemon uses a two-second idle interval. The normal daily five-plus-five-minute duration was not waited out in this run.",
+    "Human insertion raises only the private headless browser or a browser on an inactive Windows desktop. It does not raise the ordinary user browser.",
+    "The requested keep list is not a complete inventory of pages preserved by native safety. Prefilled/unknown forms and human-touched/borrowed pages remain protected.",
+    "Screenshot paths are temporary local artifacts: copy and verify the desired delivery file before ordinary temporary-folder cleanup.",
+    "No upstream CLI/daemon binary or Harness core update, no automatic input replay, no general speed ratio claim."
+  ]
+}

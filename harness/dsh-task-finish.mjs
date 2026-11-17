@@ -42,7 +42,11 @@ export async function finishBrowserTask(deps, args, exec, parse, { keepAll = fal
     if (preserved === null) return { skipped: true };
     if (deps.registry.requestFor(sessionId) !== requestId) throw new Error('Browser ownership changed before stop');
     const result = await deps.starts.stop({ sessionId, signal: exec.signal });
-    return { ...result, keptTabIds: preserved, controlReleased: true };
+    return {
+      ...result, keptTabIds: preserved, requestedKeepTabIds: preserved, controlReleased: true,
+      protectedPagesMayRemain: true,
+      cleanupNote: 'keptTabIds lists the requested result pages. Native cleanup also preserves borrowed or human-touched pages, unfinished forms and uncertain content; controlReleased does not assert that every tab/window was closed.',
+    };
   })();
   state.running = task;
   try { const result = await task; finishes.delete(sessionId); return result; }

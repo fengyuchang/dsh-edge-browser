@@ -3207,7 +3207,7 @@ index 89a886b..54245dc 100644
      "types": ["chrome"],
      "baseUrl": ".",
 diff --git a/apps/extension/wxt.config.ts b/apps/extension/wxt.config.ts
-index 73b6f4c..d4cd80f 100644
+index 73b6f4c..91f324b 100644
 --- a/apps/extension/wxt.config.ts
 +++ b/apps/extension/wxt.config.ts
 @@ -33,7 +33,8 @@ export default defineConfig({
@@ -3216,7 +3216,7 @@ index 73b6f4c..d4cd80f 100644
    manifest: {
 -    name: "BrowserSkill",
 +    name: "DeepSeek Harness",
-+    version_name: process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.9",
++    version_name: process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.10",
      description:
        "Let AI agents use your logged-in browser in a separate Agent Window—without interrupting your work. Powered by the bsk CLI.",
      // Flat debugger sessions are required to address out-of-process iframes.
@@ -3241,7 +3241,7 @@ index 73b6f4c..d4cd80f 100644
        },
      ],
      define: {
-+      __DSH_INTEGRATION_VERSION__: JSON.stringify(process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.9"),
++      __DSH_INTEGRATION_VERSION__: JSON.stringify(process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.10"),
 +      __DSH_HARNESS_URL__: JSON.stringify(process.env.BSK_DSH_HTTP_BASE ?? "http://127.0.0.1:3080"),
        __BSK_EXT_BUILD__: JSON.stringify(EXTENSION_BUILD),
        __BSK_EXT_VERSION__: JSON.stringify(EXTENSION_VERSION),
@@ -3423,14 +3423,18 @@ index be2dfe6..86ab21e 100644
  control. Actual editing and dragging keep the person in control until they finish; merely
  focusing a text field does not create an editing hold. Human intervention or document
 diff --git a/packages/dsh-plugin-browserskill/skill/references/help-and-recovery.md b/packages/dsh-plugin-browserskill/skill/references/help-and-recovery.md
-index 9212743..9692cde 100644
+index 9212743..7b1f076 100644
 --- a/packages/dsh-plugin-browserskill/skill/references/help-and-recovery.md
 +++ b/packages/dsh-plugin-browserskill/skill/references/help-and-recovery.md
-@@ -49,3 +49,14 @@ backends to bypass limits. Borrow confirmation still applies.
+@@ -49,3 +49,18 @@ backends to bypass limits. Borrow confirmation still applies.
  - Unconfirmed fill: read the field. Formatting may satisfy the goal; correct only a
    remaining difference instead of blindly refilling or requesting help.
  - Other errors: follow the hint; on unrecoverable failure, report and stop the owned session.
 +## 后台读取与加载诊断
++
++- diagnose 的 `runtimeMatchesPlugin` 表示修订号完全一致；`compatibleForInput` 表示属于已测试的语义定位/batch 兼容范围。兼容但较旧时仍建议加载最新扩展，以获得空标签等修复。不要因兼容提示改用桌面坐标绕过控制协议。
++- `finish` 的 `keptTabIds` / `requestedKeepTabIds` 是模型显式要求保留的页面；`controlReleased:true` 不等于每个窗口都关闭。原生保护可能另外保留借用页、用户碰过的页面、未提交表单和不确定内容。不要据此宣称所有页已关闭。
++- 后台缩略图在五分钟没有模型工具活动后暂停取图，仅核对会话存在性，避免无限延长守护进程的空闲计时。守护进程仍独立保护忙碌或人工接手的任务；默认回收可能再需要一个五分钟空闲周期。新工具活动恢复预览。列出会话或容量已满时核实并释放确已消失的记录，不抢占仍在使用的任务。
 +
 +- `ready:false / reason:blank_page`：空标签没有可读内容，也没有获得输入上下文。新任务页先用 `bsk_page(action=navigate)` 打开目标 URL；也可切换、归还或结束任务。不要反复刷新空白页，不要为消除错误改写借用的用户页面。
 +- `The strict observation changed before this action`：运行 `bsk_session(action=sync)`，核对新状态，再决定是否执行 evaluate 等动作。没有自动重放脚本。
@@ -3483,6 +3487,21 @@ index 986825e..67139fd 100644
  
  States are `visible` (default), `hidden` (absent or not visible), `attached`, and
  `detached` (absent). Visibility does not guarantee enabled state or actionability.
+diff --git a/packages/dsh-plugin-browserskill/skill/references/screenshots-and-canvas.md b/packages/dsh-plugin-browserskill/skill/references/screenshots-and-canvas.md
+index f87cfca..1a42663 100644
+--- a/packages/dsh-plugin-browserskill/skill/references/screenshots-and-canvas.md
++++ b/packages/dsh-plugin-browserskill/skill/references/screenshots-and-canvas.md
+@@ -1,5 +1,10 @@
+ # Screenshots and Canvas
+ 
++A successful screenshot keeps its returned local PNG path readable, including
++when an image attachment is also returned. Copy that temporary file to the
++requested output directory for durable delivery, and verify the copied bytes.
++Aborted/failed captures do not leave a deliverable PNG.
++
+ `@eN canvas [visual:screenshot]` is text, not an image. Screenshot the ref when needed; never infer
+ Canvas names/controls from nearby labels. If images cannot be understood, ask for
+ an image-capable model and continue with available semantics.
 diff --git a/packages/dsh-plugin-browserskill/skill/references/tabs-and-profiles.md b/packages/dsh-plugin-browserskill/skill/references/tabs-and-profiles.md
 index 5fe2b1f..cc0bb03 100644
 --- a/packages/dsh-plugin-browserskill/skill/references/tabs-and-profiles.md
@@ -3660,10 +3679,10 @@ index 8694793..9be22af 100644
      ctx.slots.register(
 diff --git a/packages/dsh-plugin-browserskill/src/dsh-operations.ts b/packages/dsh-plugin-browserskill/src/dsh-operations.ts
 new file mode 100644
-index 0000000..daeb353
+index 0000000..6920c62
 --- /dev/null
 +++ b/packages/dsh-plugin-browserskill/src/dsh-operations.ts
-@@ -0,0 +1,151 @@
+@@ -0,0 +1,160 @@
 +import { readFile } from "node:fs/promises";
 +import { defineTool, type ToolDefinition, type ToolRunContext } from "@deepseek-ai/dsh-tools";
 +import { DSH_BUILD_VERSION } from "./dsh-build-info";
@@ -3686,13 +3705,22 @@ index 0000000..daeb353
 +type Timing = { operation: string; queueMs: number; commandMs: number; totalMs: number; outcome: string };
 +const timings = new WeakMap<ToolDeps, Array<Timing & { session: string }>>();
 +const compatibleSessions = new WeakMap<ToolDeps, Set<string>>();
++// These patch revisions share the tested semantic-locator/batch wire contract.
++// Unknown future revisions remain unverified, even if their base version matches.
++export function compatibleAdvancedRevision(version: string | undefined): boolean {
++  const revision = version?.match(/^0\.4\.2-dsh\.(0|[1-9]\d*)$/);
++  const current = DSH_BUILD_VERSION.match(/^0\.4\.2-dsh\.(0|[1-9]\d*)$/);
++  return !!revision && !!current && Number.isSafeInteger(Number(revision[1])) &&
++    Number(revision[1]) >= 8 && Number(revision[1]) <= Number(current[1]);
++}
 +export async function checkAdvancedCompatibility(deps: ToolDeps, session: string, exec: ToolRunContext): Promise<void> {
 +  const identity = `${session}:${deps.registry.requestFor(session)}`;
 +  if (compatibleSessions.get(deps)?.has(identity)) return;
 +  const result = await deps.queue.run(session, () => deps.runner.run(["debug", "capabilities", "--session", session], { signal: exec.signal, timeoutMs: 10_000, tag: session }), exec.signal);
 +  const capabilities = parseBskJson(result, "browser version check") as { capabilities?: { extension?: { integration_version?: string } } };
-+  if (capabilities.capabilities?.extension?.integration_version !== DSH_BUILD_VERSION)
-+    throw new Error("Browser extension and Harness plugin revisions do not match. Finish current tasks and reload the updated Edge extension; no input was sent.");
++  const extensionVersion = capabilities.capabilities?.extension?.integration_version;
++  if (!compatibleAdvancedRevision(extensionVersion))
++    throw new Error(`Browser extension ${extensionVersion ?? "unknown"} is not in the tested input-compatible range 0.4.2-dsh.8 through ${DSH_BUILD_VERSION}. Finish current tasks and reload the updated Edge extension; no input was sent.`);
 +  const known = compatibleSessions.get(deps) ?? new Set<string>();
 +  if (known.size >= 64) known.clear();
 +  known.add(identity); compatibleSessions.set(deps, known);
@@ -3806,7 +3834,7 @@ index 0000000..daeb353
 +        try {
 +          const caps = await deps.queue.run(session, () => run(["debug", "capabilities", "--session", session]), exec.signal) as { capabilities?: { extension?: { integration_version?: string } } };
 +          const version = caps.capabilities?.extension?.integration_version;
-+          checks.extension = { integrationVersion: version ?? "not_reported", runtimeMatchesPlugin: version === DSH_BUILD_VERSION };
++          checks.extension = { integrationVersion: version ?? "not_reported", runtimeMatchesPlugin: version === DSH_BUILD_VERSION, compatibleForInput: compatibleAdvancedRevision(version), updateRecommended: version !== DSH_BUILD_VERSION };
 +        } catch { checks.extension = { reason: "active_session_capabilities_unavailable" }; }
 +      }
 +      exec.signal.throwIfAborted();
@@ -3906,10 +3934,47 @@ index 1ae65b3..be12de2 100644
            available: observation.isAvailable(),
          });
 diff --git a/packages/dsh-plugin-browserskill/src/observation.ts b/packages/dsh-plugin-browserskill/src/observation.ts
-index 855f06b..bda6f23 100644
+index 855f06b..7c0a3ab 100644
 --- a/packages/dsh-plugin-browserskill/src/observation.ts
 +++ b/packages/dsh-plugin-browserskill/src/observation.ts
-@@ -425,6 +425,8 @@ export class ObservationService {
+@@ -78,6 +78,10 @@ const DEFAULT_SCHEDULER: ObservationScheduler = {
+ 
+ /** Max consecutive capture failures before a session drops to the idle cadence. */
+ const FAILURE_BACKOFF_THRESHOLD = 3;
++// The bundled daemon uses a five-minute idle interval. Stop refreshing idle
++// thumbnails so passive viewing cannot renew that interval forever. The daemon
++// still decides when to reap, including its busy/human-help protections.
++const PREVIEW_IDLE_PAUSE_MS = 5 * 60_000;
+ /** Current + previous frame, so an in-flight HTTP fetch of the old id still lands. */
+ const FRAME_RING_SIZE = 2;
+ 
+@@ -391,6 +395,25 @@ export class ObservationService {
+     );
+   }
+ 
++  private async reconcileMissingSession(
++    sessionId: string, observedEntry: SessionObservation | undefined, ownedRequest: string | undefined,
++  ): Promise<boolean> {
++    const listed = await this.deps.runner.run(["session", "list"], {
++      timeoutMs: 5000, tag: `observation:${sessionId}`,
++    });
++    if (listed.code !== 0 || listed.timedOut || listed.aborted) return false;
++    const sessions: unknown = JSON.parse(listed.stdout);
++    if (Array.isArray(sessions) && sessions.every(row => row && typeof row.session_id === "string") &&
++        !sessions.some(row => row.session_id === sessionId) &&
++        this.observations.get(sessionId) === observedEntry &&
++        this.deps.registry.requestFor(sessionId) === ownedRequest) {
++      this.deps.registry.remove(sessionId);
++      this.removeSession(sessionId);
++      return true;
++    }
++    return false;
++  }
++
+   private restingAction(sessionId: string): string {
+     const state = this.deps.registry.stateFor(sessionId);
+     return state === "cleanup" ? "awaiting cleanup" : state === "starting" ? "starting" : "idle";
+@@ -425,16 +448,22 @@ export class ObservationService {
    private async capture(sessionId: string): Promise<void> {
      if (!this.canCapture(sessionId)) return;
      if (this.captureInFlight.has(sessionId)) return;
@@ -3918,7 +3983,13 @@ index 855f06b..bda6f23 100644
      this.captureInFlight.add(sessionId);
      // Stable within this service, isolated from captures owned by other instances.
      const sessionKey = createHash("sha256").update(sessionId).digest("hex").slice(0, 16);
-@@ -434,7 +436,7 @@ export class ObservationService {
+     const outPath = join(tmpdir(), `bsk-obs-${this.scratchNamespace}-${sessionKey}.png`);
+     let writtenPath = outPath;
+     try {
++      if (this.scheduler.now() - (this.lastActivity.get(sessionId) ?? this.scheduler.now()) >= PREVIEW_IDLE_PAUSE_MS) {
++        await this.reconcileMissingSession(sessionId, observedEntry, ownedRequest);
++        return;
++      }
        const result = await this.deps.queue.run(sessionId, async () => {
          // The last viewer may have left, or foreground work arrived, while queued.
          if (!this.canCapture(sessionId)) return Promise.resolve(undefined);
@@ -3927,7 +3998,7 @@ index 855f06b..bda6f23 100644
            ["screenshot", "--session", sessionId, "--out", outPath],
            {
              timeoutMs: 15_000,
-@@ -457,18 +459,30 @@ export class ObservationService {
+@@ -457,18 +486,15 @@ export class ObservationService {
            code = undefined;
          }
          if (isSessionNotFoundCode(code)) {
@@ -3939,22 +4010,7 @@ index 855f06b..bda6f23 100644
 -          return;
 +          // not_found can name a changed screenshot target or document, not a
 +          // missing session. Confirm absence before dropping chat ownership.
-+          const listed = await this.deps.runner.run(["session", "list"], {
-+            timeoutMs: 5000,
-+            tag: `observation:${sessionId}`,
-+          });
-+          if (listed.code === 0 && !listed.timedOut && !listed.aborted) {
-+            const sessions: unknown = JSON.parse(listed.stdout);
-+            if (Array.isArray(sessions) &&
-+                sessions.every(row => row && typeof row.session_id === "string") &&
-+                !sessions.some(row => row.session_id === sessionId) &&
-+                this.observations.get(sessionId) === observedEntry &&
-+                this.deps.registry.requestFor(sessionId) === ownedRequest) {
-+              this.deps.registry.remove(sessionId);
-+              this.removeSession(sessionId);
-+              return;
-+            }
-+          }
++          if (await this.reconcileMissingSession(sessionId, observedEntry, ownedRequest)) return;
          }
          throw new Error(`screenshot exited ${result.code}`);
        }
@@ -4024,7 +4080,7 @@ index 5d0d3bc..89d913f 100644
    run(args: string[], options?: BskRunOptions): Promise<BskRunResult>;
    /** Kill every still-running child (used when the plugin unloads). */
 diff --git a/packages/dsh-plugin-browserskill/src/session-starts.ts b/packages/dsh-plugin-browserskill/src/session-starts.ts
-index 74bfe5a..fa86db5 100644
+index 74bfe5a..be6f34b 100644
 --- a/packages/dsh-plugin-browserskill/src/session-starts.ts
 +++ b/packages/dsh-plugin-browserskill/src/session-starts.ts
 @@ -24,6 +24,7 @@ interface RequestStatus {
@@ -4088,8 +4144,40 @@ index 74bfe5a..fa86db5 100644
      const ownedRequestId = this.deps.registry.requestFor(id);
      const record = ownedRequestId ? this.journal.records.get(ownedRequestId) : undefined;
      if (!record || !this.ownsRegisteredSession(record))
+@@ -392,8 +397,30 @@ export class SessionStarts {
+     }
+   }
+ 
+-  async reconcile(): Promise<void> {
++  async reconcile(signal?: AbortSignal, checkLive = false): Promise<void> {
+     this.forgetStopped();
++    // Listing or reaching capacity must not keep locally tracked ghosts after
++    // the daemon has reaped them. Never stop another program's session here.
++    if (checkLive && this.deps.registry.size() > 0) {
++      const active = this.deps.registry.list().filter(entry => entry.state === "active")
++        .map(entry => ({ sessionId: entry.sessionId, requestId: entry.requestId }));
++      if (active.length) try {
++        const result = await this.deps.runner.run(["session", "list"], { signal, timeoutMs: 5000 });
++        const listed: unknown = parseBskJson(result, "session reconciliation");
++        if (Array.isArray(listed) && listed.every(row => row && typeof row.session_id === "string")) {
++          for (const entry of active) {
++            if (!listed.some(row => row.session_id === entry.sessionId) &&
++                this.deps.registry.stateFor(entry.sessionId) === "active" &&
++                this.deps.registry.requestFor(entry.sessionId) === entry.requestId) {
++              this.deps.registry.remove(entry.sessionId);
++              this.deps.observation.removeSession(entry.sessionId);
++            }
++          }
++          this.forgetStopped();
++        }
++      } catch { /* Unavailable/malformed daemon state never authorizes removal. */ }
++      signal?.throwIfAborted();
++    }
+     await Promise.allSettled(
+       [...this.journal.records.values()].filter((r) => r.cleanup).map((r) => this.cancel(r)),
+     );
 diff --git a/packages/dsh-plugin-browserskill/src/tools.ts b/packages/dsh-plugin-browserskill/src/tools.ts
-index d048534..069ce14 100644
+index d048534..f76a3f6 100644
 --- a/packages/dsh-plugin-browserskill/src/tools.ts
 +++ b/packages/dsh-plugin-browserskill/src/tools.ts
 @@ -17,6 +17,8 @@ import {
@@ -4173,7 +4261,16 @@ index d048534..069ce14 100644
    }
  }
  
-@@ -524,6 +552,17 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
+@@ -378,7 +406,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
+         // Reserve the slot BEFORE spawning: check-and-reserve is synchronous,
+         // so concurrent starts can never both pass the cap and leak a session.
+         const starts = (deps.starts ??= new SessionStarts(deps));
+-        await starts.reconcile();
++        await starts.reconcile(exec.signal, deps.registry.size() >= deps.config.maxSessions);
+         const record = starts.begin(ownerSessionIds(deps.ctx, exec.agent?.id));
+         const startArgs = ["session", "start", "--request-id", record.requestId];
+         if (args.agentName !== undefined) startArgs.push("--agent-name", args.agentName);
+@@ -524,11 +552,22 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
      }),
    );
  
@@ -4191,6 +4288,12 @@ index d048534..069ce14 100644
    register(
      defineTool({
        name: "session.stop",
+       description:
+-        "Stop a browser session and close its Agent Window. Stops the given session, or the " +
++        "Stop a browser session, close disposable agent pages and release control. Native safety may preserve borrowed/human-touched pages, unfinished forms or uncertain content. Stops the given session, or the " +
+         "current session when `session` is omitted. An unacknowledged stop is retried before " +
+         "selecting another session; specify session or requestId if several stops are pending. " +
+         "A requestId identifies the original start even if its short session ID is reused. Once accepted, " +
 @@ -557,6 +596,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
            return await starts.stop({
              sessionId: args.session,
@@ -4199,6 +4302,26 @@ index d048534..069ce14 100644
              signal: exec.signal,
            });
          } catch (error) {
+@@ -634,8 +674,8 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
+       },
+       isConcurrencySafe: () => true,
+       // Reconcile only our journaled requests; never enumerate foreign sessions.
+-      async execute() {
+-        await deps.starts?.reconcile();
++      async execute(_args, exec) {
++        await deps.starts?.reconcile(exec.signal, true);
+         const current = registry.current();
+         return {
+           pendingCleanup: deps.starts?.pendingCleanup() ?? 0,
+@@ -1046,7 +1086,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
+       name: "inspect.screenshot",
+       description:
+         "Capture a PNG screenshot of the session's active tab, or crop to a snapshot ref element. " +
+-        "Returns the image itself when the deployment supports image input, otherwise a file path.",
++        "Returns a readable local PNG path and also the image itself when the deployment supports image input. Copy the temporary file for durable delivery.",
+       parameters: {
+         session: SESSION_PARAM,
+         ref: {
 @@ -1088,7 +1128,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
          render: (_args, value) => {
            const text =
@@ -4208,6 +4331,36 @@ index d048534..069ce14 100644
                : `[session ${value.session}] screenshot saved to ${value.path} (${value.width}x${value.height}px, ${value.byteSize} bytes) — this deployment cannot inline images; read the file to view it`;
            const captureText = value.captureId
              ? `; captureId=${value.captureId}, single-use click with original PNG imageX/imageY`
+@@ -1122,9 +1162,8 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
+         );
+         const cmdArgs = ["screenshot", "--session", sessionId, "--out", outPath];
+         if (args.ref !== undefined) cmdArgs.push("--ref", args.ref);
+-        // The scratch PNG is only kept when it IS the model-facing artifact
+-        // (no attachment store to inline through); once the bytes are saved
+-        // into the store — and on every failure/abort path — it is deleted.
++        // A returned path must remain readable even when the image is inlined.
++        // Only failed/aborted captures discard their temporary PNG.
+         let keepFile = false;
+         let writtenPath: string | undefined;
+         try {
+@@ -1141,14 +1180,15 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
+           const data = await readFile(reply.path);
+           if (exec.signal.aborted) throw abortError();
+           const ref = await trySaveScreenshot(deps.ctx, exec, data, `screenshot-${sessionId}.png`);
+-          keepFile = ref === undefined;
++          if (exec.signal.aborted) throw abortError();
++          keepFile = true;
+           return {
+             session: sessionId,
+             tabId: reply.tab_id,
+             path: reply.path,
+             width: reply.width,
+             height: reply.height,
+-            byteSize: reply.byte_size,
++            byteSize: data.byteLength,
+             ...(reply.capture_id ? { captureId: reply.capture_id } : {}),
+             ...(reply.capture_unavailable ? { captureUnavailable: reply.capture_unavailable } : {}),
+             ...(ref !== undefined
 diff --git a/packages/dsh-plugin-browserskill/tests/client/browser-inspect-toolview.test.tsx b/packages/dsh-plugin-browserskill/tests/client/browser-inspect-toolview.test.tsx
 index 7d8e8eb..b7c4ebe 100644
 --- a/packages/dsh-plugin-browserskill/tests/client/browser-inspect-toolview.test.tsx
@@ -4222,10 +4375,10 @@ index 7d8e8eb..b7c4ebe 100644
      ]);
 diff --git a/packages/dsh-plugin-browserskill/tests/dsh-batch.test.ts b/packages/dsh-plugin-browserskill/tests/dsh-batch.test.ts
 new file mode 100644
-index 0000000..ec574b9
+index 0000000..e31f61e
 --- /dev/null
 +++ b/packages/dsh-plugin-browserskill/tests/dsh-batch.test.ts
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,63 @@
 +import { DSH_BUILD_VERSION } from "../src/dsh-build-info";
 +import { afterEach, describe, expect, it, vi } from "vitest";
 +import { createStepRuntime, STEP_SUCCESS, STEP_PARTIAL, stepReply } from "./helpers/step-runtime";
@@ -4252,6 +4405,12 @@ index 0000000..ec574b9
 +    const runtime = await createStepRuntime(run);cleanups.push(runtime.dispose);
 +    const result = await runtime.execute(undefined, { action: "batch", contextId: "ctx-before", steps });
 +    expect(result.isError).toBe(true);expect(run).toHaveBeenCalledTimes(1);expect(run.mock.calls[0][0][0]).toBe("debug");
++  });
++  it.each(["0.4.2-dsh.8", "0.4.2-dsh.9"])("accepts the tested semantic/batch contract of %s", async version => {
++    const run = vi.fn(async (args: string[]) => args[0] === "debug" ? stepReply({ capabilities: { extension: { integration_version: version } } }, 0) : stepReply(STEP_SUCCESS, 0));
++    const runtime = await createStepRuntime(run);cleanups.push(runtime.dispose);
++    const result = await runtime.execute(undefined, { action: "batch", contextId: "ctx-before", steps });
++    expect(result.isError).not.toBe(true);expect(receipt(result)).toMatchObject({ ok: true, completed: 3 });
 +  });
 +  it("reuses native step, advances context and returns one final observation without echoing submitted values", async () => {
 +    let count = 0;
@@ -4285,18 +4444,21 @@ index 0000000..ec574b9
 +});
 diff --git a/packages/dsh-plugin-browserskill/tests/dsh-diagnostics.test.ts b/packages/dsh-plugin-browserskill/tests/dsh-diagnostics.test.ts
 new file mode 100644
-index 0000000..08167e0
+index 0000000..0c7f688
 --- /dev/null
 +++ b/packages/dsh-plugin-browserskill/tests/dsh-diagnostics.test.ts
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,33 @@
 +import { DSH_BUILD_VERSION } from "../src/dsh-build-info";
 +import { describe, expect, it, vi } from "vitest";
-+import { createDshOperations, recordDshTiming } from "../src/dsh-operations";
++import { compatibleAdvancedRevision, createDshOperations, recordDshTiming } from "../src/dsh-operations";
 +import { KeyedExecutor } from "../src/queue";
 +import { SessionRegistry } from "../src/sessions";
 +import type { ToolDeps } from "../src/tools";
 +
 +describe("browser diagnostics", () => {
++  it.each([undefined, "unknown", "0.4.2-dsh.7", "0.4.2-dsh.999", "0.4.3-dsh.10", "0.4.2-dsh.08"])("does not infer input compatibility for %s", version => {
++    expect(compatibleAdvancedRevision(version)).toBe(false);
++  });
 +  it("reports compiled/CLI/extension versions and isolates bounded timings to the caller", async () => {
 +    const registry = new SessionRegistry(5);
 +    for (const id of ["s1", "s2"]) { registry.completeStart({ sessionId: id, startedAtMs: 0 }); registry.trackOwner(id, [id === "s1" ? "owner-a" : "owner-b"]); }
@@ -4320,7 +4482,7 @@ index 0000000..08167e0
 +  });
 +});
 diff --git a/packages/dsh-plugin-browserskill/tests/observation.test.ts b/packages/dsh-plugin-browserskill/tests/observation.test.ts
-index bd42161..a2a2f90 100644
+index bd42161..e5c4850 100644
 --- a/packages/dsh-plugin-browserskill/tests/observation.test.ts
 +++ b/packages/dsh-plugin-browserskill/tests/observation.test.ts
 @@ -61,6 +61,8 @@ function fakeRunner(
@@ -4355,7 +4517,28 @@ index bd42161..a2a2f90 100644
              stderr: "",
              timedOut: false,
              aborted: false,
-@@ -831,7 +836,7 @@ describe("availability and missing sessions", () => {
+@@ -181,6 +186,20 @@ async function waitFor(cond: () => boolean, timeoutMs = 10_000): Promise<void> {
+ }
+ 
+ describe("state machine", () => {
++  it("pauses idle thumbnails without stopping the task and resumes after real action", async () => {
++    const scheduler=fakeScheduler(),runner=fakeRunner();const {service,registry}=setup({runner,scheduler});service.addSession("s1");
++    scheduler.advance(5*60_000);scheduler.runNext();
++    await waitFor(()=>runner.calls.some(call=>call.args[1]==="list")&&scheduler.pending().length>0);
++    expect(runner.calls.some(call=>call.args[0]==="screenshot"||call.args[1]==="stop")).toBe(false);expect(registry.isOwned("s1")).toBe(true);
++    service.beginAction("s1","reading");service.endAction("s1");scheduler.runNext();
++    await waitFor(()=>service.getState()[0].thumbnailAttachmentId!==undefined);service.dispose();
++  });
++
++  it("reconciles a daemon-reaped idle task using metadata without renewing its screenshot activity", async () => {
++    const scheduler=fakeScheduler(),runner=fakeRunner({sessionList:[]});const {service,registry,events}=setup({runner,scheduler});service.addSession("s1");
++    scheduler.advance(5*60_000);scheduler.runNext();await waitFor(()=>events.some(event=>event.type==="remove"));
++    expect(registry.isOwned("s1")).toBe(false);expect(runner.calls.some(call=>call.args[0]==="screenshot"||call.args[1]==="stop")).toBe(false);service.dispose();
++  });
+   it("shows pending resources without capturing until activation, and stops captures during cleanup", async () => {
+     const registry = new SessionRegistry(5);
+     registry.trackStart({ sessionId: "pending", startedAtMs: 1 });
+@@ -831,7 +850,7 @@ describe("availability and missing sessions", () => {
  
    it("removes an owned ghost on not_found and stops asking for frames", async () => {
      const scheduler = fakeScheduler();
@@ -4364,7 +4547,7 @@ index bd42161..a2a2f90 100644
      const registry = new SessionRegistry(5);
      own(registry, "s1");
      const { service, events } = setup({ runner, scheduler, registry });
-@@ -843,6 +848,21 @@ describe("availability and missing sessions", () => {
+@@ -843,6 +862,21 @@ describe("availability and missing sessions", () => {
      expect(scheduler.pending()).toEqual([]);
    });
  
@@ -4399,10 +4582,36 @@ index 2b1fb22..9493710 100644
        browser,
      ]);
 diff --git a/packages/dsh-plugin-browserskill/tests/session-starts.test.ts b/packages/dsh-plugin-browserskill/tests/session-starts.test.ts
-index 66eb572..df832d1 100644
+index 66eb572..eaa3a47 100644
 --- a/packages/dsh-plugin-browserskill/tests/session-starts.test.ts
 +++ b/packages/dsh-plugin-browserskill/tests/session-starts.test.ts
-@@ -24,6 +24,7 @@ describe("recoverable plugin starts", () => {
+@@ -7,6 +7,25 @@ import { DiskStartJournal, memoryStartJournal } from "../src/start-journal";
+ import { cleanups, exec, failed, harness, ok } from "./session-lifecycle-harness";
+ 
+ describe("recoverable plugin starts", () => {
++  it("frees daemon-confirmed missing slots before admitting a new session at capacity", async () => {
++    const h = harness(async args => {
++      if (args[1] === "list") return ok([]);
++      if (args[1] === "start") return ok({ session_id: "new", browser_instance_id: "browser" });
++      return ok({ state: args.includes("--claim") ? "active" : "closed" });
++    });
++    for (let i=0;i<5;i++) { const id="expired-"+i;h.registry.completeStart({sessionId:id,startedAtMs:1});h.registry.trackOwner(id,["conversation"]);h.observation.addSession(id); }
++    await expect(h.session({ action: "start" })).resolves.toMatchObject({ sessionId: "new" });
++    expect(h.registry.list().map(row=>row.sessionId)).toEqual(["new"]);
++    expect(h.calls.some(call=>call.args[1]==="list")).toBe(true);
++    expect(h.calls.some(call=>call.args[1]==="stop")).toBe(false);
++  });
++
++  it.each([{ rows: [{ session_id: "live" }, { session_id: "foreign" }] }, { rows: {} }])("preserves live/uncertain slots without adopting foreign daemon sessions: %j", async ({ rows }) => {
++    const h = harness(async () => ok(rows));
++    h.registry.completeStart({ sessionId: "live", startedAtMs: 1 });h.registry.trackOwner("live",["conversation"]);
++    const result=await h.session({action:"list"}) as {sessions:Array<{sessionId:string}>};
++    expect(result.sessions.map(row=>row.sessionId)).toEqual(["live"]);expect(h.registry.isOwned("foreign")).toBe(false);
++  });
+   it("publishes a session only after both initialization and claim succeed", async () => {
+     let finishNavigation!: (result: BskRunResult) => void;
+     let finishClaim!: (result: BskRunResult) => void;
+@@ -24,6 +43,7 @@ describe("recoverable plugin starts", () => {
        return ok({ state: "closed" });
      });
      h.registry.completeStart({ sessionId: "working", startedAtMs: 1 });
@@ -4447,12 +4656,14 @@ index 40b7a8d..33038a0 100644
      expect(skill.source).toBe("bundled");
      // Source frontmatter is registration metadata and must not leak into the body.
 diff --git a/packages/dsh-plugin-browserskill/tests/tools.test.ts b/packages/dsh-plugin-browserskill/tests/tools.test.ts
-index 604e88e..e97cbce 100644
+index 604e88e..c6ca871 100644
 --- a/packages/dsh-plugin-browserskill/tests/tools.test.ts
 +++ b/packages/dsh-plugin-browserskill/tests/tools.test.ts
-@@ -2,7 +2,7 @@ import type { ChildProcess } from "node:child_process";
+@@ -1,8 +1,8 @@
+ import type { ChildProcess } from "node:child_process";
  import { EventEmitter } from "node:events";
- import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
++import { existsSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
  import { tmpdir } from "node:os";
 -import { join } from "node:path";
 +import { join, resolve } from "node:path";
@@ -4554,7 +4765,67 @@ index 604e88e..e97cbce 100644
      ).rejects.toThrow();
      expect(calls).toHaveLength(0);
    });
-@@ -2941,7 +2942,7 @@ describe("structured extraction", () => {
+@@ -1502,7 +1503,7 @@ describe("session.stop / list", () => {
+     expect(registry.current()).toBeUndefined();
+   });
+ 
+-  it("lists only plugin-owned sessions with the current marker (no daemon view)", async () => {
++  it("lists only plugin-owned sessions with the current marker after metadata reconciliation", async () => {
+     const { tools, calls } = setup({
+       "session start": seq([START_REPLY("s1"), START_REPLY("s2")]),
+     });
+@@ -1528,8 +1529,9 @@ describe("session.stop / list", () => {
+         requestId: expect.any(String),
+       },
+     ]);
+-    // Registry-only: listing must not call the daemon at all.
+-    expect(calls.some((c) => c.args.join(" ").startsWith("session list"))).toBe(false);
++    // Reconciliation can remove confirmed ghosts; daemon-owned foreign sessions
++    // are never published as this plugin's own list.
++    expect(calls.some((c) => c.args.join(" ").startsWith("session list"))).toBe(true);
+   });
+ });
+ 
+@@ -2534,7 +2536,7 @@ describe("screenshot scratch file lifecycle", () => {
+     llm: { resolveModelInfo: async () => ({ inputModalities: ["text", "image"] }) },
+   };
+ 
+-  it("deletes the scratch PNG once the bytes are in the attachment store", async () => {
++  it("keeps the returned PNG path readable after storing an inline attachment", async () => {
+     const { runner, calls } = outWritingRunner();
+     const { tools } = setupWithRunner(runner, IMAGE_SERVICES);
+     await startSession(tools);
+@@ -2545,14 +2547,26 @@ describe("screenshot scratch file lifecycle", () => {
+       },
+     });
+     const screenshot = tools.get("inspect.screenshot");
+-    const value = (await screenshot?.execute({}, exec)) as { image?: unknown; path: string };
++    const value = (await screenshot?.execute({}, exec)) as { image?: unknown; path: string; byteSize: number };
+     expect(value.image).toBeDefined();
+     const out = calls.find((c) => c.args[0] === "screenshot")?.args.at(-1);
+     expect(out).toBeDefined();
+-    expect(existsSync(out ?? "")).toBe(false);
++    expect(value.path).toBe(out);
++    expect(readFileSync(value.path).byteLength).toBe(value.byteSize);
++    unlinkSync(value.path);
++  });
++
++  it("discards the PNG when cancellation arrives during attachment saving", async () => {
++    const { runner, calls } = outWritingRunner(), controller = new AbortController();
++    const services = { ...IMAGE_SERVICES, attachments: { ...IMAGE_SERVICES.attachments, saveImage: async (input: { data: Uint8Array; mediaType: string }) => { controller.abort();return IMAGE_SERVICES.attachments.saveImage(input); } } };
++    const { tools } = setupWithRunner(runner, services);await startSession(tools);
++    const exec = makeExec({ signal: controller.signal, agent: { session: { requestHeader: () => ({ config: { provider: "p", model: "vl" } }) }, options: {} } });
++    await expect(tools.get("inspect.screenshot")!.execute({}, exec)).rejects.toThrow(/aborted/);
++    const out = calls.find(call => call.args[0] === "screenshot")!.args.at(-1)!;
++    expect(existsSync(out)).toBe(false);
+   });
+ 
+-  it("keeps the PNG only when it is the model-facing artifact (no store)", async () => {
++  it("keeps the PNG when no attachment store is available", async () => {
+     const { runner, calls } = outWritingRunner();
+     const { tools } = setupWithRunner(runner);
+     await startSession(tools);
+@@ -2941,7 +2955,7 @@ describe("structured extraction", () => {
      ]);
    });
    it("routes discovered targets and CSV receipts through the existing tool", async () => {
@@ -4563,7 +4834,7 @@ index 604e88e..e97cbce 100644
      const { tools, calls } = setup({
        "session start": START_REPLY("s1"),
        "extract table": receipt,
-@@ -2954,7 +2955,7 @@ describe("structured extraction", () => {
+@@ -2954,7 +2968,7 @@ describe("structured extraction", () => {
            extractKind: "table",
            extractTarget: "xt_fixture",
            extractFormat: "csv",
@@ -4572,7 +4843,7 @@ index 604e88e..e97cbce 100644
            csvSafe: true,
          },
          makeExec(),
-@@ -2970,7 +2971,7 @@ describe("structured extraction", () => {
+@@ -2970,7 +2984,7 @@ describe("structured extraction", () => {
        "--format",
        "csv",
        "--out",
@@ -4581,7 +4852,7 @@ index 604e88e..e97cbce 100644
        "--csv-safe",
      ]);
    });
-@@ -2993,7 +2994,7 @@ describe("structured extraction", () => {
+@@ -2993,7 +3007,7 @@ describe("structured extraction", () => {
        "262144",
      ]);
      await inspect.execute(
@@ -4590,7 +4861,7 @@ index 604e88e..e97cbce 100644
        makeExec(),
      );
      expect(calls.at(-1)?.args).not.toContain("--max-bytes");
-@@ -3205,7 +3206,7 @@ describe("script and file actions share the existing runtime", () => {
+@@ -3205,7 +3219,7 @@ describe("script and file actions share the existing runtime", () => {
        action: "upload",
        args: {
          target: "#drop",
@@ -4599,7 +4870,7 @@ index 604e88e..e97cbce 100644
          mode: "drop",
          timeoutMs: 6000,
        },
-@@ -3217,9 +3218,9 @@ describe("script and file actions share the existing runtime", () => {
+@@ -3217,9 +3231,9 @@ describe("script and file actions share the existing runtime", () => {
          "--tab-id",
          "7",
          "--file",
@@ -4611,7 +4882,7 @@ index 604e88e..e97cbce 100644
          "--mode",
          "drop",
          "--timeout",
-@@ -3230,7 +3231,7 @@ describe("script and file actions share the existing runtime", () => {
+@@ -3230,7 +3244,7 @@ describe("script and file actions share the existing runtime", () => {
        action: "download",
        args: {
          target: "#download",
@@ -4620,7 +4891,7 @@ index 604e88e..e97cbce 100644
          overwrite: true,
          timeoutMs: 6000,
        },
-@@ -3240,7 +3241,7 @@ describe("script and file actions share the existing runtime", () => {
+@@ -3240,7 +3254,7 @@ describe("script and file actions share the existing runtime", () => {
          "--session",
          "s1",
          "--out",
@@ -4629,7 +4900,7 @@ index 604e88e..e97cbce 100644
          "--tab-id",
          "7",
          "--overwrite",
-@@ -3271,8 +3272,8 @@ describe("script and file actions share the existing runtime", () => {
+@@ -3271,8 +3285,8 @@ describe("script and file actions share the existing runtime", () => {
    });
    it.each([
      { action: "evaluate", expression: "1+1" },

@@ -1,5 +1,10 @@
 # Screenshots and Canvas
 
+A successful screenshot keeps its returned local PNG path readable, including
+when an image attachment is also returned. Copy that temporary file to the
+requested output directory for durable delivery, and verify the copied bytes.
+Aborted/failed captures do not leave a deliverable PNG.
+
 `@eN canvas [visual:screenshot]` is text, not an image. Screenshot the ref when needed; never infer
 Canvas names/controls from nearby labels. If images cannot be understood, ask for
 an image-capable model and continue with available semantics.

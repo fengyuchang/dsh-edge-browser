@@ -326,7 +326,10 @@ async function finishBrowserTask(deps, args, exec, parse, { keepAll = false, eli
 				signal: exec.signal
 			}),
 			keptTabIds: preserved,
-			controlReleased: true
+			requestedKeepTabIds: preserved,
+			controlReleased: true,
+			protectedPagesMayRemain: true,
+			cleanupNote: "keptTabIds lists the requested result pages. Native cleanup also preserves borrowed or human-touched pages, unfinished forms and uncertain content; controlReleased does not assert that every tab/window was closed."
 		};
 	})();
 	state.running = task;
@@ -1438,7 +1441,7 @@ function disposeAll(disposers) {
 }
 //#endregion
 //#region src/dsh-build-info.ts
-const DSH_BUILD_VERSION = "0.4.2-dsh.9";
+const DSH_BUILD_VERSION = "0.4.2-dsh.10";
 //#endregion
 //#region src/message-source.ts
 /** Source syntax changed in DSH's durable format v4, not in the browser protocol. */
@@ -1497,10 +1500,15 @@ const DSH_BATCH_QUEUE = Symbol("dsh-batch-queue");
 const DSH_BATCH_RECEIPT = Symbol("dsh-batch-step-receipt");
 const timings = /* @__PURE__ */ new WeakMap();
 const compatibleSessions = /* @__PURE__ */ new WeakMap();
+function compatibleAdvancedRevision(version) {
+	const revision = version?.match(/^0\.4\.2-dsh\.(0|[1-9]\d*)$/);
+	const current = DSH_BUILD_VERSION.match(/^0\.4\.2-dsh\.(0|[1-9]\d*)$/);
+	return !!revision && !!current && Number.isSafeInteger(Number(revision[1])) && Number(revision[1]) >= 8 && Number(revision[1]) <= Number(current[1]);
+}
 async function checkAdvancedCompatibility(deps, session, exec) {
 	const identity = `${session}:${deps.registry.requestFor(session)}`;
 	if (compatibleSessions.get(deps)?.has(identity)) return;
-	if (parseBskJson(await deps.queue.run(session, () => deps.runner.run([
+	const extensionVersion = parseBskJson(await deps.queue.run(session, () => deps.runner.run([
 		"debug",
 		"capabilities",
 		"--session",
@@ -1509,7 +1517,8 @@ async function checkAdvancedCompatibility(deps, session, exec) {
 		signal: exec.signal,
 		timeoutMs: 1e4,
 		tag: session
-	}), exec.signal), "browser version check").capabilities?.extension?.integration_version !== "0.4.2-dsh.9") throw new Error("Browser extension and Harness plugin revisions do not match. Finish current tasks and reload the updated Edge extension; no input was sent.");
+	}), exec.signal), "browser version check").capabilities?.extension?.integration_version;
+	if (!compatibleAdvancedRevision(extensionVersion)) throw new Error(`Browser extension ${extensionVersion ?? "unknown"} is not in the tested input-compatible range 0.4.2-dsh.8 through ${DSH_BUILD_VERSION}. Finish current tasks and reload the updated Edge extension; no input was sent.`);
 	const known = compatibleSessions.get(deps) ?? /* @__PURE__ */ new Set();
 	if (known.size >= 64) known.clear();
 	known.add(identity);
@@ -1756,7 +1765,9 @@ function createDshOperations(deps, step) {
 				]), exec.signal)).capabilities?.extension?.integration_version;
 				checks.extension = {
 					integrationVersion: version ?? "not_reported",
-					runtimeMatchesPlugin: version === DSH_BUILD_VERSION
+					runtimeMatchesPlugin: version === DSH_BUILD_VERSION,
+					compatibleForInput: compatibleAdvancedRevision(version),
+					updateRecommended: version !== DSH_BUILD_VERSION
 				};
 			} catch {
 				checks.extension = { reason: "active_session_capabilities_unavailable" };
@@ -2356,6 +2367,7 @@ const DEFAULT_SCHEDULER = {
 };
 /** Max consecutive capture failures before a session drops to the idle cadence. */
 const FAILURE_BACKOFF_THRESHOLD = 3;
+const PREVIEW_IDLE_PAUSE_MS = 3e5;
 /** Current + previous frame, so an in-flight HTTP fetch of the old id still lands. */
 const FRAME_RING_SIZE = 2;
 var ObservationService = class {
@@ -2630,6 +2642,20 @@ var ObservationService = class {
 		const entry = this.observations.get(sessionId);
 		return this.deps.options.enabled && this.deps.registry.isUsable(sessionId) && !this.disposed && this.thumbnailViewers > 0 && !this.foregroundDepth.has(sessionId) && entry !== void 0;
 	}
+	async reconcileMissingSession(sessionId, observedEntry, ownedRequest) {
+		const listed = await this.deps.runner.run(["session", "list"], {
+			timeoutMs: 5e3,
+			tag: `observation:${sessionId}`
+		});
+		if (listed.code !== 0 || listed.timedOut || listed.aborted) return false;
+		const sessions = JSON.parse(listed.stdout);
+		if (Array.isArray(sessions) && sessions.every((row) => row && typeof row.session_id === "string") && !sessions.some((row) => row.session_id === sessionId) && this.observations.get(sessionId) === observedEntry && this.deps.registry.requestFor(sessionId) === ownedRequest) {
+			this.deps.registry.remove(sessionId);
+			this.removeSession(sessionId);
+			return true;
+		}
+		return false;
+	}
 	restingAction(sessionId) {
 		const state = this.deps.registry.stateFor(sessionId);
 		return state === "cleanup" ? "awaiting cleanup" : state === "starting" ? "starting" : "idle";
@@ -2666,6 +2692,10 @@ var ObservationService = class {
 		const outPath = join(tmpdir(), `bsk-obs-${this.scratchNamespace}-${sessionKey}.png`);
 		let writtenPath = outPath;
 		try {
+			if (this.scheduler.now() - (this.lastActivity.get(sessionId) ?? this.scheduler.now()) >= PREVIEW_IDLE_PAUSE_MS) {
+				await this.reconcileMissingSession(sessionId, observedEntry, ownedRequest);
+				return;
+			}
 			const result = await this.deps.queue.run(sessionId, async () => {
 				if (!this.canCapture(sessionId)) return Promise.resolve(void 0);
 				const capture = this.deps.runner.capturePreview ? this.deps.runner.capturePreview(sessionId, {
@@ -2697,18 +2727,7 @@ var ObservationService = class {
 					code = void 0;
 				}
 				if (isSessionNotFoundCode(code)) {
-					const listed = await this.deps.runner.run(["session", "list"], {
-						timeoutMs: 5e3,
-						tag: `observation:${sessionId}`
-					});
-					if (listed.code === 0 && !listed.timedOut && !listed.aborted) {
-						const sessions = JSON.parse(listed.stdout);
-						if (Array.isArray(sessions) && sessions.every((row) => row && typeof row.session_id === "string") && !sessions.some((row) => row.session_id === sessionId) && this.observations.get(sessionId) === observedEntry && this.deps.registry.requestFor(sessionId) === ownedRequest) {
-							this.deps.registry.remove(sessionId);
-							this.removeSession(sessionId);
-							return;
-						}
-					}
+					if (await this.reconcileMissingSession(sessionId, observedEntry, ownedRequest)) return;
 				}
 				throw new Error(`screenshot exited ${result.code}`);
 			}
@@ -5399,8 +5418,28 @@ var SessionStarts = class {
 	forgetStopped() {
 		for (const record of this.journal.records.values()) if (!record.cleanup && !record.stop && record.session && !this.ownsRegisteredSession(record)) this.forget(record);
 	}
-	async reconcile() {
+	async reconcile(signal, checkLive = false) {
 		this.forgetStopped();
+		if (checkLive && this.deps.registry.size() > 0) {
+			const active = this.deps.registry.list().filter((entry) => entry.state === "active").map((entry) => ({
+				sessionId: entry.sessionId,
+				requestId: entry.requestId
+			}));
+			if (active.length) try {
+				const listed = parseBskJson(await this.deps.runner.run(["session", "list"], {
+					signal,
+					timeoutMs: 5e3
+				}), "session reconciliation");
+				if (Array.isArray(listed) && listed.every((row) => row && typeof row.session_id === "string")) {
+					for (const entry of active) if (!listed.some((row) => row.session_id === entry.sessionId) && this.deps.registry.stateFor(entry.sessionId) === "active" && this.deps.registry.requestFor(entry.sessionId) === entry.requestId) {
+						this.deps.registry.remove(entry.sessionId);
+						this.deps.observation.removeSession(entry.sessionId);
+					}
+					this.forgetStopped();
+				}
+			} catch {}
+			signal?.throwIfAborted();
+		}
 		await Promise.allSettled([...this.journal.records.values()].filter((r) => r.cleanup).map((r) => this.cancel(r)));
 	}
 	pendingCleanup() {
@@ -5699,7 +5738,7 @@ function defineBrowserOperations(deps, register) {
 			if (args.url !== void 0 && args.url.trim().length === 0) throw new Error("url must be a non-empty string");
 			if (args.width === void 0 !== (args.height === void 0)) throw new Error("width and height must be given together");
 			const starts = deps.starts ??= new SessionStarts(deps);
-			await starts.reconcile();
+			await starts.reconcile(exec.signal, deps.registry.size() >= deps.config.maxSessions);
 			const record = starts.begin(ownerSessionIds(deps.ctx, exec.agent?.id));
 			const startArgs = [
 				"session",
@@ -5822,7 +5861,7 @@ function defineBrowserOperations(deps, register) {
 	}));
 	register(defineTool({
 		name: "session.stop",
-		description: "Stop a browser session and close its Agent Window. Stops the given session, or the current session when `session` is omitted. An unacknowledged stop is retried before selecting another session; specify session or requestId if several stops are pending. A requestId identifies the original start even if its short session ID is reused. Once accepted, cleanup continues if this call is aborted. Only plugin-created sessions can be stopped.",
+		description: "Stop a browser session, close disposable agent pages and release control. Native safety may preserve borrowed/human-touched pages, unfinished forms or uncertain content. Stops the given session, or the current session when `session` is omitted. An unacknowledged stop is retried before selecting another session; specify session or requestId if several stops are pending. A requestId identifies the original start even if its short session ID is reused. Once accepted, cleanup continues if this call is aborted. Only plugin-created sessions can be stopped.",
 		parameters: SESSION_STOP_PARAMS,
 		output: {
 			schema: {
@@ -5930,8 +5969,8 @@ function defineBrowserOperations(deps, register) {
 			}]
 		},
 		isConcurrencySafe: () => true,
-		async execute() {
-			await deps.starts?.reconcile();
+		async execute(_args, exec) {
+			await deps.starts?.reconcile(exec.signal, true);
 			const current = registry.current();
 			return {
 				pendingCleanup: deps.starts?.pendingCleanup() ?? 0,
@@ -6392,7 +6431,7 @@ function defineBrowserOperations(deps, register) {
 	}));
 	register(defineTool({
 		name: "inspect.screenshot",
-		description: "Capture a PNG screenshot of the session's active tab, or crop to a snapshot ref element. Returns the image itself when the deployment supports image input, otherwise a file path.",
+		description: "Capture a PNG screenshot of the session's active tab, or crop to a snapshot ref element. Returns a readable local PNG path and also the image itself when the deployment supports image input. Copy the temporary file for durable delivery.",
 		parameters: {
 			session: SESSION_PARAM,
 			ref: {
@@ -6505,14 +6544,15 @@ function defineBrowserOperations(deps, register) {
 				const data = await readFile(reply.path);
 				if (exec.signal.aborted) throw abortError$1();
 				const ref = await trySaveScreenshot(deps.ctx, exec, data, `screenshot-${sessionId}.png`);
-				keepFile = ref === void 0;
+				if (exec.signal.aborted) throw abortError$1();
+				keepFile = true;
 				return {
 					session: sessionId,
 					tabId: reply.tab_id,
 					path: reply.path,
 					width: reply.width,
 					height: reply.height,
-					byteSize: reply.byte_size,
+					byteSize: data.byteLength,
 					...reply.capture_id ? { captureId: reply.capture_id } : {},
 					...reply.capture_unavailable ? { captureUnavailable: reply.capture_unavailable } : {},
 					...ref !== void 0 ? { image: {

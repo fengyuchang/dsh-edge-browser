@@ -340,6 +340,7 @@ declare class ObservationService {
   dispose(): void;
   private cancelCapture;
   private canCapture;
+  private reconcileMissingSession;
   private restingAction;
   /** Schedule the next capture for a session; `delayMs` 0 means "as soon as the event loop allows". */
   private scheduleCapture;
@@ -399,7 +400,7 @@ declare class SessionStarts {
   private ownsRegisteredSession;
   /** Forget passive session disappearance, preserving unacknowledged stop receipts. */
   forgetStopped(): void;
-  reconcile(): Promise<void>;
+  reconcile(signal?: AbortSignal, checkLive?: boolean): Promise<void>;
   pendingCleanup(): number;
   archive(owner: string): void;
   private schedule;

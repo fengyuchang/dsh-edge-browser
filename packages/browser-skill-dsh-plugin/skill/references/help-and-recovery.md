@@ -51,6 +51,10 @@ backends to bypass limits. Borrow confirmation still applies.
 - Other errors: follow the hint; on unrecoverable failure, report and stop the owned session.
 ## 后台读取与加载诊断
 
+- diagnose 的 `runtimeMatchesPlugin` 表示修订号完全一致；`compatibleForInput` 表示属于已测试的语义定位/batch 兼容范围。兼容但较旧时仍建议加载最新扩展，以获得空标签等修复。不要因兼容提示改用桌面坐标绕过控制协议。
+- `finish` 的 `keptTabIds` / `requestedKeepTabIds` 是模型显式要求保留的页面；`controlReleased:true` 不等于每个窗口都关闭。原生保护可能另外保留借用页、用户碰过的页面、未提交表单和不确定内容。不要据此宣称所有页已关闭。
+- 后台缩略图在五分钟没有模型工具活动后暂停取图，仅核对会话存在性，避免无限延长守护进程的空闲计时。守护进程仍独立保护忙碌或人工接手的任务；默认回收可能再需要一个五分钟空闲周期。新工具活动恢复预览。列出会话或容量已满时核实并释放确已消失的记录，不抢占仍在使用的任务。
+
 - `ready:false / reason:blank_page`：空标签没有可读内容，也没有获得输入上下文。新任务页先用 `bsk_page(action=navigate)` 打开目标 URL；也可切换、归还或结束任务。不要反复刷新空白页，不要为消除错误改写借用的用户页面。
 - `The strict observation changed before this action`：运行 `bsk_session(action=sync)`，核对新状态，再决定是否执行 evaluate 等动作。没有自动重放脚本。
 - 明确提示“不属于当前聊天”时保留会话隔离；提示“当前聊天没有可用的这个浏览器任务”时先 `bsk_session(action=list)` 核对，它可能已结束、被关闭或在重启后失去关联。不要据此接管其他聊天的任务。
