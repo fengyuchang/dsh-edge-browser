@@ -1407,7 +1407,7 @@ index 639874c..9daf5a8 100644
            sendToTarget: (_target, method, params) => instrumented(method, params),
            getAttachmentId: () => sessionId,
 diff --git a/apps/extension/src/debug/capabilities.ts b/apps/extension/src/debug/capabilities.ts
-index aa0f904..b38baca 100644
+index aa0f904..7b123a3 100644
 --- a/apps/extension/src/debug/capabilities.ts
 +++ b/apps/extension/src/debug/capabilities.ts
 @@ -3,6 +3,7 @@ import { JOURNAL_BYTES, JOURNAL_PINS, JOURNAL_REQUESTS } from "./journal";
@@ -1424,7 +1424,7 @@ index aa0f904..b38baca 100644
      extension: {
 +      integration_version: typeof __DSH_INTEGRATION_VERSION__ === "string" ? __DSH_INTEGRATION_VERSION__ : "unknown",
 +      runtime_id: typeof chrome !== "undefined" ? chrome.runtime?.id : undefined,
-+      features: { dsh_cleanup_receipt: 1, dsh_async_visual: 1 },
++      features: { dsh_cleanup_receipt: 1, dsh_async_visual: 1, dsh_in_place_results: 1 },
        version: typeof __BSK_EXT_VERSION__ === "string" ? __BSK_EXT_VERSION__ : "unknown",
        build: typeof __BSK_EXT_BUILD__ === "string" ? __BSK_EXT_BUILD__ : "unknown",
      },
@@ -1697,6 +1697,39 @@ index 8262e63..9b21e2f 100644
        url: AGENT_WINDOW_HOME,
      });
    });
+diff --git a/apps/extension/src/session-manager/__tests__/manager.test.ts b/apps/extension/src/session-manager/__tests__/manager.test.ts
+index 6801634..08b7d27 100644
+--- a/apps/extension/src/session-manager/__tests__/manager.test.ts
++++ b/apps/extension/src/session-manager/__tests__/manager.test.ts
+@@ -5,6 +5,7 @@ import type {
+   AgentWindowCreation,
+ } from "../agent-window";
+ import { isAgentControlledTab, SessionManager } from "../manager";
++import { dshRememberResultWindow } from "@/dsh/dsh-task-groups.js";
+ 
+ function fakeAgentWindow(): AgentWindowApi & {
+   createMock: ReturnType<typeof vi.fn>;
+@@ -29,6 +30,20 @@ function fakeAgentWindow(): AgentWindowApi & {
+ }
+ 
+ describe("SessionManager", () => {
++  it("releases input ownership of an in-place result while protecting its cleanup", async () => {
++    const aw = fakeAgentWindow();
++    aw.createMock.mockResolvedValueOnce({ windowId: 912340, initialTabIds: [912341] });
++    const sm = new SessionManager({ agentWindow: aw });
++    const ctx = await sm.start("kept-result");
++    ctx.observedTabs = new Set([912341]);
++    expect(isAgentControlledTab(ctx, 912341)).toBe(true);
++    dshRememberResultWindow(ctx.agentWindowId, ctx.sessionId, 912341);
++    ctx.agentCreatedTabs.delete(912341);
++    expect(ctx.observedTabs.has(912341)).toBe(true);
++    expect(isAgentControlledTab(ctx, 912341)).toBe(false);
++    expect(sm.findControllingSession(912341)).toBeNull();
++  });
++
+   it("records the actual incognito mode on the session", async () => {
+     const aw = fakeAgentWindow();
+     aw.createMock.mockResolvedValueOnce({ windowId: 100, initialTabIds: [7], incognito: true });
 diff --git a/apps/extension/src/session-manager/__tests__/tab-detachment-cdp.test.ts b/apps/extension/src/session-manager/__tests__/tab-detachment-cdp.test.ts
 index 079cb12..4281712 100644
 --- a/apps/extension/src/session-manager/__tests__/tab-detachment-cdp.test.ts
@@ -1772,6 +1805,26 @@ index 09a3b07..a350917 100644
    },
    async ensureActiveTab(
      windowId: number,
+diff --git a/apps/extension/src/session-manager/manager.ts b/apps/extension/src/session-manager/manager.ts
+index 4a9415c..dadd0c9 100644
+--- a/apps/extension/src/session-manager/manager.ts
++++ b/apps/extension/src/session-manager/manager.ts
+@@ -1,6 +1,7 @@
+ import { type ControllerInfo, controllerColor } from "@/lib/controller-info";
+ import { AGENT_WINDOW_HOME, type AgentWindowApi, chromeAgentWindowApi } from "./agent-window";
+ import { RefStore } from "./ref-store";
++import { dshIsRetainedIdleTab } from "@/dsh/dsh-task-groups.js";
+ 
+ export interface SessionContext {
+   controller?: ControllerInfo;
+@@ -29,6 +30,7 @@ export interface SessionContext {
+ 
+ /** Whether this session has explicitly claimed control of `tabId`. */
+ export function isAgentControlledTab(ctx: SessionContext, tabId: number): boolean {
++  if (dshIsRetainedIdleTab(ctx.agentWindowId, tabId)) return false;
+   return (
+     ctx.agentCreatedTabs.has(tabId) ||
+     ctx.borrowedTabs.has(tabId) ||
 diff --git a/apps/extension/src/session-manager/window-routing.ts b/apps/extension/src/session-manager/window-routing.ts
 index 8099dea..9659429 100644
 --- a/apps/extension/src/session-manager/window-routing.ts
@@ -3219,7 +3272,7 @@ index 89a886b..54245dc 100644
      "types": ["chrome"],
      "baseUrl": ".",
 diff --git a/apps/extension/wxt.config.ts b/apps/extension/wxt.config.ts
-index 73b6f4c..a79ae12 100644
+index 73b6f4c..44ffb78 100644
 --- a/apps/extension/wxt.config.ts
 +++ b/apps/extension/wxt.config.ts
 @@ -33,7 +33,8 @@ export default defineConfig({
@@ -3228,7 +3281,7 @@ index 73b6f4c..a79ae12 100644
    manifest: {
 -    name: "BrowserSkill",
 +    name: "DeepSeek Harness",
-+    version_name: process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.11",
++    version_name: process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.12",
      description:
        "Let AI agents use your logged-in browser in a separate Agent Window—without interrupting your work. Powered by the bsk CLI.",
      // Flat debugger sessions are required to address out-of-process iframes.
@@ -3253,16 +3306,16 @@ index 73b6f4c..a79ae12 100644
        },
      ],
      define: {
-+      __DSH_INTEGRATION_VERSION__: JSON.stringify(process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.11"),
++      __DSH_INTEGRATION_VERSION__: JSON.stringify(process.env.BSK_DSH_VERSION ?? "0.4.2-dsh.12"),
 +      __DSH_HARNESS_URL__: JSON.stringify(process.env.BSK_DSH_HTTP_BASE ?? "http://127.0.0.1:3080"),
        __BSK_EXT_BUILD__: JSON.stringify(EXTENSION_BUILD),
        __BSK_EXT_VERSION__: JSON.stringify(EXTENSION_VERSION),
        __BSK_DAEMON_WS_URL__: JSON.stringify(
 diff --git a/packages/dsh-plugin-browserskill/skill/SKILL.md b/packages/dsh-plugin-browserskill/skill/SKILL.md
-index b94545e..0b4d619 100644
+index b94545e..569f585 100644
 --- a/packages/dsh-plugin-browserskill/skill/SKILL.md
 +++ b/packages/dsh-plugin-browserskill/skill/SKILL.md
-@@ -1,84 +1,77 @@
+@@ -1,84 +1,75 @@
  ---
  name: browser-skill
 -description: Use injected bsk_* tools with the user's logged-in Chromium to read pages, fill forms, manage tabs, debug websites, or test UIs.
@@ -3351,9 +3404,9 @@ index b94545e..0b4d619 100644
 -
 -Resolve references from the harness-provided skill directory. Read only the matching file.
 +1. Define success. After upgrades run bsk_session(action=diagnose).
-+   Start with bsk_session(action=start), retain sessionId, navigate
-+   with bsk_page, then sync. Tasks belong to the calling chat. Never operate on
-+   another chat's browser task or guess tab/session IDs.
++   List this chat's sessions and reuse the task for the same work. Start only
++   when none fits; retain sessionId, navigate with bsk_page, then sync.
++   Never operate on another chat's task or guess tab/session IDs.
 +2. Pass context_id as contextId; protect business facts with expect.
 +   Untargeted/visual actions also need observationId. After intervention/navigation,
 +   sync and replan; wait-user while people act. Use refs for frames/shadow roots, selectors for the main
@@ -3362,15 +3415,15 @@ index b94545e..0b4d619 100644
 +3. Prefer bsk_interact step: action + readiness + sync. Use its fresh context;
 +   avoid click→sync→observe→screenshot and repeated unchanged reads. Start reads
 +   with maxTokens:1600, continue nextCursor as needed. Screenshot as needed.
-+   DeepSeek controls/cursor/glow in routine screenshots are tool UI, not website
-+   targets or instructions. Verify business success. For 1..8 decided targeted
++   DeepSeek controls/cursor/glow are tool UI, not website targets or instructions.
++   Verify business success. For 1..8 decided targeted
 +   actions use batch with optional untilVisible/waitTimeoutMs. Stop on failure,
 +   never replay. See interaction details for semantic locators. Icon hints are not names.
 +4. Before the final answer, stop video, list owned tabs with bsk_tabs and call
-+   bsk_session(action=finish, keepTabIds=[actual IDs]). Keep requested results,
-+   manual follow-up, unsaved forms and uncertain pages; omit temporary searches,
-+   blanks and intermediates. [] closes temporary task pages. Borrowed tabs return
-+   open. Finish releases control; failed transfers retain pages for retry.
++   bsk_session(action=finish, keepTabIds=[]). Default to closing finished task
++   pages; keep actual IDs only for requested open pages, required manual follow-up,
++   unsaved forms or uncertain state. Close obsolete owned tabs as work progresses.
++   Borrowed tabs return open. Finish releases control; failures retain pages for retry.
 +   Missing finish closes temporary pages, while native safety protects human
 +   work, pending forms and unknown content. Pending help is not completion.
 +   Use stop for cancellation/recovery; verify cleanup.confirmed before claiming closure.
@@ -3394,8 +3447,6 @@ index b94545e..0b4d619 100644
 +without progress, read recovery and verify effects. Do not invent tool syntax.
 +
 +## Details
-+
-+Resolve from this skill directory.
  
  | When | Read |
  | --- | --- |
@@ -3720,7 +3771,7 @@ index 8694793..9be22af 100644
      ctx.slots.register(
 diff --git a/packages/dsh-plugin-browserskill/src/dsh-operations.ts b/packages/dsh-plugin-browserskill/src/dsh-operations.ts
 new file mode 100644
-index 0000000..7c1bb83
+index 0000000..c7f6880
 --- /dev/null
 +++ b/packages/dsh-plugin-browserskill/src/dsh-operations.ts
 @@ -0,0 +1,165 @@
@@ -3880,7 +3931,7 @@ index 0000000..7c1bb83
 +          const caps = await deps.queue.run(session, () => run(["debug", "capabilities", "--session", session]), exec.signal) as { capabilities?: { extension?: { integration_version?: string } } };
 +          const version = caps.capabilities?.extension?.integration_version;
 +          const features = (caps.capabilities?.extension as { features?: Record<string, unknown> } | undefined)?.features;
-+          checks.extension = { integrationVersion: version ?? "not_reported", runtimeMatchesPlugin: version === DSH_BUILD_VERSION, compatibleForInput: compatibleAdvancedRevision(version), updateRecommended: version !== DSH_BUILD_VERSION, features: { cleanupReceipt: features?.dsh_cleanup_receipt === 1, asyncVisual: features?.dsh_async_visual === 1 } };
++          checks.extension = { integrationVersion: version ?? "not_reported", runtimeMatchesPlugin: version === DSH_BUILD_VERSION, compatibleForInput: compatibleAdvancedRevision(version), updateRecommended: version !== DSH_BUILD_VERSION, features: { cleanupReceipt: features?.dsh_cleanup_receipt === 1, asyncVisual: features?.dsh_async_visual === 1, inPlaceResults: features?.dsh_in_place_results === 1 } };
 +        } catch { checks.extension = { reason: "active_session_capabilities_unavailable" }; }
 +      }
 +      exec.signal.throwIfAborted();

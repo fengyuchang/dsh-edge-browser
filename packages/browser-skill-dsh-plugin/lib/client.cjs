@@ -128,11 +128,11 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var BrowserInspectToolView_module_css_default = {
-			"summary": "TG0CRa_summary",
-			"image-wrap": "TG0CRa_image-wrap",
-			"inspect-button": "TG0CRa_inspect-button",
 			"body": "TG0CRa_body",
-			"card": "TG0CRa_card"
+			"card": "TG0CRa_card",
+			"inspect-button": "TG0CRa_inspect-button",
+			"image-wrap": "TG0CRa_image-wrap",
+			"summary": "TG0CRa_summary"
 		};
 		//#endregion
 		//#region \0bsk-css:D:\dsh-browserskill-recovery\packages\dsh-plugin-browserskill\src\client\ScreenshotImage.module.css.mjs
@@ -146,11 +146,11 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ScreenshotImage_module_css_default = {
-			"preview": "_1Utk2a_preview",
-			"thumbnail": "_1Utk2a_thumbnail",
-			"retry": "_1Utk2a_retry",
 			"frame": "_1Utk2a_frame",
-			"status": "_1Utk2a_status"
+			"preview": "_1Utk2a_preview",
+			"status": "_1Utk2a_status",
+			"thumbnail": "_1Utk2a_thumbnail",
+			"retry": "_1Utk2a_retry"
 		};
 		//#endregion
 		//#region src/client/ScreenshotImage.tsx
@@ -3946,38 +3946,38 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var ObservationOverlay_module_css_default = {
-			"strip-thumb": "icZHVa_strip-thumb",
-			"header": "icZHVa_header",
-			"tab-title": "icZHVa_tab-title",
-			"bsk-obs-fade-in": "icZHVa_bsk-obs-fade-in",
 			"tool-stop": "icZHVa_tool-stop",
-			"actions-group": "icZHVa_actions-group",
-			"capsule": "icZHVa_capsule",
-			"actions": "icZHVa_actions",
-			"thumb": "icZHVa_thumb",
-			"floating-notice": "icZHVa_floating-notice",
-			"status-text": "icZHVa_status-text",
-			"tool-button": "icZHVa_tool-button",
-			"tool-stop-armed": "icZHVa_tool-stop-armed",
-			"strip-item": "icZHVa_strip-item",
-			"pin-badge": "icZHVa_pin-badge",
 			"hint": "icZHVa_hint",
-			"resize-handle": "icZHVa_resize-handle",
-			"tool-wrap": "icZHVa_tool-wrap",
-			"card": "icZHVa_card",
-			"stage": "icZHVa_stage",
-			"strip-interrupt": "icZHVa_strip-interrupt",
-			"strip-id": "icZHVa_strip-id",
-			"brand-icon": "icZHVa_brand-icon",
-			"icon-button": "icZHVa_icon-button",
-			"badge": "icZHVa_badge",
-			"strip-thumb-empty": "icZHVa_strip-thumb-empty",
-			"sidebar-tab": "icZHVa_sidebar-tab",
-			"placeholder": "icZHVa_placeholder",
-			"body": "icZHVa_body",
-			"strip": "icZHVa_strip",
+			"actions-group": "icZHVa_actions-group",
+			"strip-thumb": "icZHVa_strip-thumb",
 			"strip-main": "icZHVa_strip-main",
-			"tool-danger": "icZHVa_tool-danger"
+			"tool-button": "icZHVa_tool-button",
+			"tool-danger": "icZHVa_tool-danger",
+			"strip-interrupt": "icZHVa_strip-interrupt",
+			"badge": "icZHVa_badge",
+			"placeholder": "icZHVa_placeholder",
+			"tool-stop-armed": "icZHVa_tool-stop-armed",
+			"strip": "icZHVa_strip",
+			"icon-button": "icZHVa_icon-button",
+			"resize-handle": "icZHVa_resize-handle",
+			"stage": "icZHVa_stage",
+			"tool-wrap": "icZHVa_tool-wrap",
+			"header": "icZHVa_header",
+			"bsk-obs-fade-in": "icZHVa_bsk-obs-fade-in",
+			"status-text": "icZHVa_status-text",
+			"brand-icon": "icZHVa_brand-icon",
+			"capsule": "icZHVa_capsule",
+			"pin-badge": "icZHVa_pin-badge",
+			"strip-item": "icZHVa_strip-item",
+			"sidebar-tab": "icZHVa_sidebar-tab",
+			"strip-thumb-empty": "icZHVa_strip-thumb-empty",
+			"strip-id": "icZHVa_strip-id",
+			"body": "icZHVa_body",
+			"card": "icZHVa_card",
+			"tab-title": "icZHVa_tab-title",
+			"floating-notice": "icZHVa_floating-notice",
+			"thumb": "icZHVa_thumb",
+			"actions": "icZHVa_actions"
 		};
 		//#endregion
 		//#region src/client/observation-view.ts

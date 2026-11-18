@@ -7,7 +7,14 @@ const dshIdleTaskWindows = new Set(), dshReservedTaskWindows = new Set();
 const dshResultWindows = new Map(), dshReusedWindows = new Map();
 const dshRetainedIdleTabs = new Map();
 function dshIsRetainedIdleTab(windowId, tabId) { return dshRetainedIdleTabs.get(windowId)?.has(tabId) === true; }
-function dshRememberResultWindow(windowId, sessionId) { dshResultWindows.set(windowId, sessionId); }
+function dshRememberResultWindow(windowId, sessionId, tabId) {
+  dshResultWindows.set(windowId, sessionId);
+  if (Number.isInteger(tabId)) {
+    let tabs = dshRetainedIdleTabs.get(windowId);
+    if (!tabs) dshRetainedIdleTabs.set(windowId, tabs = new Set());
+    tabs.add(tabId);
+  }
+}
 
 function dshSyncTaskWindows(sessions) {
   const liveWindows = new Set(sessions.map(s => s.agentWindowId)), liveSessions = new Set(sessions.map(s => s.sessionId));

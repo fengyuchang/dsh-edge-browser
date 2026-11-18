@@ -68,16 +68,16 @@ assert(!rows.has('raced')); assert(rows.has('foreign'));
 dispose(); assert.equal(hooks.size, 0);
 
 // Exercise the shipped extension seam with stateful Chrome APIs. This verifies
-// a kept form/tab is moved (not copied), detached, unmuted and safe to retry.
+// a kept form/tab stays in place, detaches and is safe to retry without opening windows.
 const pages = new Map([[7, { id: 7, windowId: 4, index: 0, formValue: 'unsaved input' }], [99, { id: 99, windowId: 88 }]]);
-const released = [], reset = [], windowCalls = [];
+const released = [], reset = [], windowCalls = [], retained = new Set();
 let releaseFails = true;
 const session = { sessionId: 'owned', agentWindowId: 4, agentCreatedTabs: new Set([7]), refStore: { invalidateTab() {} } };
 const options = { cdp: { releaseSessionTab: async (_id, tab) => { if (releaseFails) { releaseFails = false; throw new Error('detach failed'); } released.push(tab); } } };
 const overlay = { resetAgentOverlays: async tab => reset.push(tab) };
 const classic = text => text.replace(/^import .*;\r?\n/gm, '').replace(/^export \{.*\};?\r?$/gm, '').replace(/^export /gm, '');
 const sandbox = vm.createContext({ console, expectedTabMoves:{run: async (_move, run)=>run()}, dshVisualStates: new Map([[7, {}]]), dshPointerPositions: new Map([[7, {}]]),
-  dshRememberResultWindow() {},
+  dshRememberResultWindow(_windowId, _sessionId, tabId) { retained.add(tabId); },
   dshRestoreTabAudio: async page => { page.muted = false; },
   chrome: {
     tabs: {
@@ -97,19 +97,20 @@ vm.runInContext(classic(fs.readFileSync(new URL('./source/extension/dsh-task-fin
 const keep = id => { sandbox.params = { tab_id: id }; return vm.runInContext('dshKeepTaskTab(session, params, options, overlay)', sandbox); };
 assert.equal((await keep(99)).code, 'not_found'); assert.equal(windowCalls.length, 0);
 assert.equal((await keep(7)).code, 'cdp_failed');
-assert.equal(pages.get(7).windowId, 90); assert.equal(pages.get(7).formValue, 'unsaved input');
-assert.equal(pages.get(8).windowId, 4, 'Keep an owned placeholder until native stop');
-assert((await keep(7)).preserved); assert.equal(windowCalls.length, 1, 'Retry must not create duplicate user windows');
+assert.equal(pages.get(7).windowId, 4); assert.equal(pages.get(7).formValue, 'unsaved input');
+assert(!pages.has(8), 'Preserving a page must not create a placeholder');
+assert(retained.has(7)); assert(session.observedTabs.has(7), 'Kept pages stay protected even if detaching fails');
+assert((await keep(7)).preserved); assert.equal(windowCalls.length, 0, 'Keeping and retrying must not create result windows');
 assert.deepEqual(released, [7]); assert.deepEqual(reset, [7]); assert.equal(pages.get(7).muted, false);
 assert.equal(pages.get(99).windowId, 88);
 // Native cooperation protects a user-touched task page as observed rather than
-// agent-created. Finishing it must still move the actual form and release control.
+// agent-created. Finishing it must preserve the actual form in place and release control.
 session.observedTabs = new Set([9]);
 pages.set(9, { id: 9, windowId: 4, index: 1, formValue: 'human input' });
 assert((await keep(9)).preserved);
-assert.equal(pages.get(9).windowId, 90);
+assert.equal(pages.get(9).windowId, 4);
 assert.equal(pages.get(9).formValue, 'human input');
-assert(!session.observedTabs.has(9));
+assert(session.observedTabs.has(9) && retained.has(9));
 assert.deepEqual(released, [7, 9]);
 session.borrowedTabs = new Map([[99, {}]]);
 session.observedTabs.add(99);

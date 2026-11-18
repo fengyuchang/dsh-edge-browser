@@ -1,0 +1,209 @@
+{
+  "version": "0.4.2-dsh.12",
+  "date": "2026-11-18",
+  "status": "passed-with-documented-limits",
+  "scope": "Independent Edge profiles, daemon and synthetic sites; no real chat input or account data",
+  "tests": {
+    "extensionPassed": 3741,
+    "nativePassed": 743,
+    "skipped": 435,
+    "typechecks": "both passed",
+    "rootChecks": "passed"
+  },
+  "live": {
+    "allChecks": 52,
+    "candidateChecks": 35,
+    "cases": [
+      {
+        "name": "previous-headless",
+        "purpose": "previous-extension reproduction and compatibility",
+        "nativeVersion": "0.4.2-dsh.12",
+        "extensionVersion": "0.4.2-dsh.11",
+        "checks": [
+          "Native/extension versions match the intended compatibility pair; window stays minimized",
+          "Inline attachment and readable delivered file contain the same real PNG bytes",
+          "Real native/extension HTTP receipt confirms the disposable tab closed",
+          "finish keep[] actually closes a plain disposable task tab",
+          "Previous extension reproduces four retained result windows after four sequential tasks",
+          "Closing only the four private retained pages returns windows to the original baseline",
+          "Real cleanup receipt identifies retained form state",
+          "Native form protection retains a prefilled form despite an empty requested keep list",
+          "Finish receipt explicitly separates requested pages from additional native safety retention",
+          "Requested result stays open after return and is explicitly accounted for in the real receipt",
+          "Real cleanup receipt identifies a protected human-input page",
+          "Physical-input fixture survives cleanup with its unsent draft intact",
+          "Tested patch pair completes semantic fill and button click through native batch with verified DOM effects",
+          "Cancellation during inline saving publishes no file result and deletes the temporary PNG",
+          "Idle preview switches to metadata without renewing the real daemon session",
+          "List reconciles a daemon-reaped task out of native capacity without stopping other sessions",
+          "No private task remains after verification"
+        ],
+        "capabilities": {
+          "integrationVersion": "0.4.2-dsh.11",
+          "runtimeMatchesPlugin": false,
+          "compatibleForInput": true,
+          "updateRecommended": true,
+          "features": {
+            "cleanupReceipt": true,
+            "asyncVisual": true,
+            "inPlaceResults": false
+          }
+        },
+        "cycles": [
+          {
+            "round": 1,
+            "addedWindows": 1,
+            "resultStayedInTaskWindow": false
+          },
+          {
+            "round": 2,
+            "addedWindows": 2,
+            "resultStayedInTaskWindow": false
+          },
+          {
+            "round": 3,
+            "addedWindows": 3,
+            "resultStayedInTaskWindow": false
+          },
+          {
+            "round": 4,
+            "addedWindows": 4,
+            "resultStayedInTaskWindow": false
+          }
+        ],
+        "ordinaryWindowUntouched": false
+      },
+      {
+        "name": "aligned-headless",
+        "purpose": "candidate acceptance",
+        "nativeVersion": "0.4.2-dsh.12",
+        "extensionVersion": "0.4.2-dsh.12",
+        "checks": [
+          "Native/extension versions match the intended compatibility pair; window stays minimized",
+          "Inline attachment and readable delivered file contain the same real PNG bytes",
+          "Real native/extension HTTP receipt confirms the disposable tab closed",
+          "finish keep[] actually closes a plain disposable task tab",
+          "Four sequential retained-result tasks reuse one plugin window without creating result windows",
+          "Closing only the four private retained pages returns windows to the original baseline",
+          "Real cleanup receipt identifies retained form state",
+          "Native form protection retains a prefilled form despite an empty requested keep list",
+          "Finish receipt explicitly separates requested pages from additional native safety retention",
+          "Requested result stays open after return and is explicitly accounted for in the real receipt",
+          "Real cleanup receipt identifies a protected human-input page",
+          "Physical-input fixture survives cleanup with its unsent draft intact",
+          "Tested patch pair completes semantic fill and button click through native batch with verified DOM effects",
+          "Cancellation during inline saving publishes no file result and deletes the temporary PNG",
+          "Idle preview switches to metadata without renewing the real daemon session",
+          "List reconciles a daemon-reaped task out of native capacity without stopping other sessions",
+          "No private task remains after verification"
+        ],
+        "capabilities": {
+          "integrationVersion": "0.4.2-dsh.12",
+          "runtimeMatchesPlugin": true,
+          "compatibleForInput": true,
+          "updateRecommended": false,
+          "features": {
+            "cleanupReceipt": true,
+            "asyncVisual": true,
+            "inPlaceResults": true
+          }
+        },
+        "cycles": [
+          {
+            "round": 1,
+            "addedWindows": 1,
+            "resultStayedInTaskWindow": true
+          },
+          {
+            "round": 2,
+            "addedWindows": 1,
+            "resultStayedInTaskWindow": true
+          },
+          {
+            "round": 3,
+            "addedWindows": 1,
+            "resultStayedInTaskWindow": true
+          },
+          {
+            "round": 4,
+            "addedWindows": 1,
+            "resultStayedInTaskWindow": true
+          }
+        ],
+        "ordinaryWindowUntouched": false
+      },
+      {
+        "name": "aligned-headed",
+        "purpose": "candidate acceptance",
+        "nativeVersion": "0.4.2-dsh.12",
+        "extensionVersion": "0.4.2-dsh.12",
+        "checks": [
+          "Native/extension versions match the intended compatibility pair; window stays minimized",
+          "Inline attachment and readable delivered file contain the same real PNG bytes",
+          "Real native/extension HTTP receipt confirms the disposable tab closed",
+          "finish keep[] actually closes a plain disposable task tab",
+          "Four sequential retained-result tasks reuse one plugin window without creating result windows",
+          "Closing only the four private retained pages returns windows to the original baseline",
+          "Real cleanup receipt identifies retained form state",
+          "Native form protection retains a prefilled form despite an empty requested keep list",
+          "Finish receipt explicitly separates requested pages from additional native safety retention",
+          "Requested result stays open after return and is explicitly accounted for in the real receipt",
+          "Real cleanup receipt identifies a protected human-input page",
+          "Physical-input fixture survives cleanup with its unsent draft intact",
+          "Tested patch pair completes semantic fill and button click through native batch with verified DOM effects",
+          "Cancellation during inline saving publishes no file result and deletes the temporary PNG",
+          "Idle preview switches to metadata without renewing the real daemon session",
+          "List reconciles a daemon-reaped task out of native capacity without stopping other sessions",
+          "Separate ordinary private window and its original tab remain untouched",
+          "No private task remains after verification"
+        ],
+        "capabilities": {
+          "integrationVersion": "0.4.2-dsh.12",
+          "runtimeMatchesPlugin": true,
+          "compatibleForInput": true,
+          "updateRecommended": false,
+          "features": {
+            "cleanupReceipt": true,
+            "asyncVisual": true,
+            "inPlaceResults": true
+          }
+        },
+        "cycles": [
+          {
+            "round": 1,
+            "addedWindows": 1,
+            "resultStayedInTaskWindow": true
+          },
+          {
+            "round": 2,
+            "addedWindows": 1,
+            "resultStayedInTaskWindow": true
+          },
+          {
+            "round": 3,
+            "addedWindows": 1,
+            "resultStayedInTaskWindow": true
+          },
+          {
+            "round": 4,
+            "addedWindows": 1,
+            "resultStayedInTaskWindow": true
+          }
+        ],
+        "ordinaryWindowUntouched": true
+      }
+    ],
+    "windowsDesktop": {
+      "scenario": "private inactive Windows desktop, separate ordinary window kept intact",
+      "samples": 76,
+      "violations": 0
+    }
+  },
+  "limits": [
+    "These results count actual windows in controlled sequential task fixtures, not memory usage or Edge process count.",
+    "Four retained results are explicitly requested open in the fixture; they remain as four tabs while the candidate uses one task window.",
+    "Unknown windows from older builds cannot be safely attributed from title or URL and were not bulk-closed.",
+    "Real daily installation and loaded-runtime verification are separate from isolated acceptance.",
+    "The earlier no-ordinary-window cold-start anomaly remains documented in the .11 evidence; it is not claimed fixed by this change."
+  ]
+}

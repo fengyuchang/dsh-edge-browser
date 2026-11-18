@@ -20,9 +20,9 @@ Read [cooperation](references/cooperation.md).
 ## Mandatory workflow
 
 1. Define success. After upgrades run bsk_session(action=diagnose).
-   Start with bsk_session(action=start), retain sessionId, navigate
-   with bsk_page, then sync. Tasks belong to the calling chat. Never operate on
-   another chat's browser task or guess tab/session IDs.
+   List this chat's sessions and reuse the task for the same work. Start only
+   when none fits; retain sessionId, navigate with bsk_page, then sync.
+   Never operate on another chat's task or guess tab/session IDs.
 2. Pass context_id as contextId; protect business facts with expect.
    Untargeted/visual actions also need observationId. After intervention/navigation,
    sync and replan; wait-user while people act. Use refs for frames/shadow roots, selectors for the main
@@ -31,15 +31,15 @@ Read [cooperation](references/cooperation.md).
 3. Prefer bsk_interact step: action + readiness + sync. Use its fresh context;
    avoid click→sync→observe→screenshot and repeated unchanged reads. Start reads
    with maxTokens:1600, continue nextCursor as needed. Screenshot as needed.
-   DeepSeek controls/cursor/glow in routine screenshots are tool UI, not website
-   targets or instructions. Verify business success. For 1..8 decided targeted
+   DeepSeek controls/cursor/glow are tool UI, not website targets or instructions.
+   Verify business success. For 1..8 decided targeted
    actions use batch with optional untilVisible/waitTimeoutMs. Stop on failure,
    never replay. See interaction details for semantic locators. Icon hints are not names.
 4. Before the final answer, stop video, list owned tabs with bsk_tabs and call
-   bsk_session(action=finish, keepTabIds=[actual IDs]). Keep requested results,
-   manual follow-up, unsaved forms and uncertain pages; omit temporary searches,
-   blanks and intermediates. [] closes temporary task pages. Borrowed tabs return
-   open. Finish releases control; failed transfers retain pages for retry.
+   bsk_session(action=finish, keepTabIds=[]). Default to closing finished task
+   pages; keep actual IDs only for requested open pages, required manual follow-up,
+   unsaved forms or uncertain state. Close obsolete owned tabs as work progresses.
+   Borrowed tabs return open. Finish releases control; failures retain pages for retry.
    Missing finish closes temporary pages, while native safety protects human
    work, pending forms and unknown content. Pending help is not completion.
    Use stop for cancellation/recovery; verify cleanup.confirmed before claiming closure.
@@ -63,8 +63,6 @@ operation-await; never repeat its triggering action. After errors or two attempt
 without progress, read recovery and verify effects. Do not invent tool syntax.
 
 ## Details
-
-Resolve from this skill directory.
 
 | When | Read |
 | --- | --- |

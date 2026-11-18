@@ -1,6 +1,6 @@
 {
   "name": "dsh-edge-browser",
-  "version": "0.4.2-dsh.11",
+  "version": "0.4.2-dsh.12",
   "private": true,
   "packageManager": "pnpm@10.17.0",
   "type": "module",
